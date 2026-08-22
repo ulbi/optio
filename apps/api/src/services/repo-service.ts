@@ -30,6 +30,15 @@ export interface RepoRecord {
   opencodeAgent: string | null;
   opencodeProvider: string | null;
   opencodeBaseUrl: string | null;
+  opencodeLiteLLMModels: {
+    plan?: string;
+    review?: string;
+    code?: string;
+    chat?: string;
+    quick?: string;
+    lint?: string;
+    small?: string;
+  } | null;
   cursorModel: string | null;
   geminiModel: string | null;
   geminiApprovalMode: string | null;

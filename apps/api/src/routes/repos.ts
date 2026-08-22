@@ -50,6 +50,18 @@ const updateRepoSchema = z
     opencodeAgent: z.string().optional(),
     opencodeProvider: z.string().optional(),
     opencodeBaseUrl: z.string().url().nullable().optional(),
+    opencodeLiteLLMModels: z
+      .object({
+        plan: z.string().optional(),
+        review: z.string().optional(),
+        code: z.string().optional(),
+        chat: z.string().optional(),
+        quick: z.string().optional(),
+        lint: z.string().optional(),
+        small: z.string().optional(),
+      })
+      .nullable()
+      .optional(),
     geminiModel: z.string().optional(),
     geminiApprovalMode: z.string().optional(),
     openclawModel: z.string().nullable().optional(),

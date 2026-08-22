@@ -54,7 +54,10 @@ export class OpenCodeAdapter implements AgentAdapter {
     // When using a custom base URL, provider API keys are optional — the adapter
     // sets a placeholder OPENAI_API_KEY in env that will be overridden if a real
     // secret exists. Without a custom base URL, require standard provider keys.
-    if (!input.opencodeBaseUrl) {
+    // If opencodeBaseUrl and opencodeLiteLLMModels are both present, require OPENAI_API_KEY.
+    if (input.opencodeBaseUrl && input.opencodeLiteLLMModels) {
+      requiredSecrets.push("OPENAI_API_KEY");
+    } else if (!input.opencodeBaseUrl) {
       requiredSecrets.push("ANTHROPIC_API_KEY", "OPENAI_API_KEY");
     }
 
@@ -77,11 +80,91 @@ export class OpenCodeAdapter implements AgentAdapter {
       env.OPENAI_API_KEY = "sk-no-key-required";
     }
 
-    // Pre-seed a minimal opencode config so the CLI doesn't hit first-run setup
-    setupFiles.push({
-      path: "/home/agent/.config/opencode/opencode.json",
-      content: JSON.stringify({ $schema: "https://opencode.ai/config.json" }),
-    });
+    if (input.opencodeBaseUrl && input.opencodeLiteLLMModels) {
+      const models: Record<string, { name: string }> = {};
+      const { plan, review, code, chat, quick, lint, small } = input.opencodeLiteLLMModels;
+
+      const allModelNames = [plan, review, code, chat, quick, lint, small].filter(
+        (m): m is string => typeof m === "string" && m.trim().length > 0,
+      );
+
+      for (const m of allModelNames) {
+        models[m] = { name: m };
+      }
+
+      const config: any = {
+        $schema: "https://opencode.ai/config.json",
+      };
+
+      if (chat) {
+        config.model = chat;
+      }
+      if (small) {
+        config.small_model = small;
+      }
+
+      config.provider = {
+        litellm: {
+          npm: "@ai-sdk/openai-compatible",
+          name: "LiteLLM Proxy",
+          options: {
+            baseURL: input.opencodeBaseUrl,
+            apiKey: "{env:OPENAI_API_KEY}",
+          },
+          models,
+        },
+      };
+
+      config.agent = {};
+      if (code) {
+        config.agent.build = {
+          model: `litellm/${code}`,
+          description: "Default implementation agent",
+        };
+      }
+      if (plan) {
+        config.agent.plan = {
+          model: `litellm/${plan}`,
+          description: "Planning agent",
+          permission: { edit: "deny", bash: "deny" },
+        };
+      }
+      if (review) {
+        config.agent.review = {
+          mode: "subagent",
+          model: `litellm/${review}`,
+          description: "Code review",
+          permission: { edit: "deny", bash: "deny" },
+        };
+      }
+      if (lint) {
+        config.agent.lint = {
+          mode: "subagent",
+          model: `litellm/${lint}`,
+          description: "Linting & fixes",
+          permission: { edit: "allow", bash: "allow" },
+        };
+      }
+      if (quick) {
+        config.agent.quick = {
+          mode: "subagent",
+          model: `litellm/${quick}`,
+          description: "Fast responses",
+          steps: 5,
+        };
+      }
+
+      setupFiles.push({
+        path: "/home/agent/.config/opencode/opencode.json",
+        content: JSON.stringify(config, null, 2),
+      });
+    } else {
+      // Pre-seed a minimal opencode config so the CLI doesn't hit first-run setup
+      setupFiles.push({
+        path: "/home/agent/.config/opencode/opencode.json",
+        content: JSON.stringify({ $schema: "https://opencode.ai/config.json" }),
+      });
+    }
 
     // Write the task file into the worktree
     if (input.taskFileContent && input.taskFilePath) {

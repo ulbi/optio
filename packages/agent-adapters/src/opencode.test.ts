@@ -120,7 +120,7 @@ describe("OpenCodeAdapter", () => {
       expect(config.env.OPENAI_API_KEY).toBe("sk-no-key-required");
     });
 
-    it("does not require provider API key secrets when opencodeBaseUrl is set", () => {
+    it("does not require provider API key secrets when opencodeBaseUrl is set but opencodeLiteLLMModels is not", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
         opencodeBaseUrl: "http://localhost:8080/v1",
@@ -129,9 +129,123 @@ describe("OpenCodeAdapter", () => {
       expect(config.requiredSecrets).not.toContain("OPENAI_API_KEY");
     });
 
+    it("requires OPENAI_API_KEY when both opencodeBaseUrl and opencodeLiteLLMModels are set", () => {
+      const config = adapter.buildContainerConfig({
+        ...baseInput,
+        opencodeBaseUrl: "http://localhost:8080/v1",
+        opencodeLiteLLMModels: {
+          code: "qwen-2.5-coder",
+        },
+      });
+      expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      expect(config.requiredSecrets).not.toContain("ANTHROPIC_API_KEY");
+    });
+
     it("does not set OPENAI_BASE_URL when opencodeBaseUrl is not provided", () => {
       const config = adapter.buildContainerConfig(baseInput);
       expect(config.env.OPENAI_BASE_URL).toBeUndefined();
+    });
+
+    it("includes opencode config as setup file with LiteLLM Proxy configuration when both opencodeBaseUrl and opencodeLiteLLMModels are provided", () => {
+      const config = adapter.buildContainerConfig({
+        ...baseInput,
+        opencodeBaseUrl: "http://lightllm-server:8080/v1",
+        opencodeLiteLLMModels: {
+          plan: "plan-model",
+          review: "review-model",
+          code: "code-model",
+          chat: "chat-model",
+          quick: "quick-model",
+          lint: "lint-model",
+          small: "small-model",
+        },
+      });
+      const configFile = config.setupFiles?.find((f) =>
+        f.path.includes(".config/opencode/opencode.json"),
+      );
+      expect(configFile).toBeDefined();
+      const parsedConfig = JSON.parse(configFile!.content);
+      expect(parsedConfig).toEqual({
+        $schema: "https://opencode.ai/config.json",
+        model: "chat-model",
+        small_model: "small-model",
+        provider: {
+          litellm: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "LiteLLM Proxy",
+            options: {
+              baseURL: "http://lightllm-server:8080/v1",
+              apiKey: "{env:OPENAI_API_KEY}",
+            },
+            models: {
+              "plan-model": { name: "plan-model" },
+              "review-model": { name: "review-model" },
+              "code-model": { name: "code-model" },
+              "chat-model": { name: "chat-model" },
+              "quick-model": { name: "quick-model" },
+              "lint-model": { name: "lint-model" },
+              "small-model": { name: "small-model" },
+            },
+          },
+        },
+        agent: {
+          build: {
+            model: "litellm/code-model",
+            description: "Default implementation agent",
+          },
+          plan: {
+            model: "litellm/plan-model",
+            description: "Planning agent",
+            permission: { edit: "deny", bash: "deny" },
+          },
+          review: {
+            mode: "subagent",
+            model: "litellm/review-model",
+            description: "Code review",
+            permission: { edit: "deny", bash: "deny" },
+          },
+          lint: {
+            mode: "subagent",
+            model: "litellm/lint-model",
+            description: "Linting & fixes",
+            permission: { edit: "allow", bash: "allow" },
+          },
+          quick: {
+            mode: "subagent",
+            model: "litellm/quick-model",
+            description: "Fast responses",
+            steps: 5,
+          },
+        },
+      });
+    });
+
+    it("omits missing models from the provider.models mapping and agent mappings", () => {
+      const config = adapter.buildContainerConfig({
+        ...baseInput,
+        opencodeBaseUrl: "http://lightllm-server:8080/v1",
+        opencodeLiteLLMModels: {
+          code: "code-model",
+          chat: "chat-model",
+        },
+      });
+      const configFile = config.setupFiles?.find((f) =>
+        f.path.includes(".config/opencode/opencode.json"),
+      );
+      expect(configFile).toBeDefined();
+      const parsedConfig = JSON.parse(configFile!.content);
+      expect(parsedConfig.model).toBe("chat-model");
+      expect(parsedConfig.small_model).toBeUndefined();
+      expect(parsedConfig.provider.litellm.models).toEqual({
+        "code-model": { name: "code-model" },
+        "chat-model": { name: "chat-model" },
+      });
+      expect(parsedConfig.agent).toEqual({
+        build: {
+          model: "litellm/code-model",
+          description: "Default implementation agent",
+        },
+      });
     });
 
     it("includes opencode config as setup file", () => {

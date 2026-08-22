@@ -31,6 +31,15 @@ export interface AgentTaskInput {
   opencodeModel?: string;
   opencodeAgent?: string;
   opencodeBaseUrl?: string;
+  opencodeLiteLLMModels?: {
+    plan?: string;
+    review?: string;
+    code?: string;
+    chat?: string;
+    quick?: string;
+    lint?: string;
+    small?: string;
+  };
   cursorModel?: string;
   openclawModel?: string;
   openclawAgent?: string;

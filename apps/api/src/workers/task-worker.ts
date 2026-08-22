@@ -382,6 +382,7 @@ export function startTaskWorker() {
           opencodeModel: repoConfig?.opencodeModel ?? opencodeDefaultModel,
           opencodeAgent: repoConfig?.opencodeAgent ?? undefined,
           opencodeBaseUrl: repoConfig?.opencodeBaseUrl ?? opencodeDefaultBaseUrl,
+          opencodeLiteLLMModels: repoConfig?.opencodeLiteLLMModels ?? undefined,
           cursorModel: repoConfig?.cursorModel ?? undefined,
           geminiAuthMode,
           geminiModel: repoConfig?.geminiModel ?? undefined,

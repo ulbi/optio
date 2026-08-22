@@ -59,6 +59,7 @@ function makeRepoConfig(overrides: Partial<RepoRecord> = {}): RepoRecord {
     opencodeAgent: null,
     opencodeProvider: null,
     opencodeBaseUrl: null,
+    opencodeLiteLLMModels: null,
     cursorModel: null,
     geminiModel: "gemini-2.5-pro",
     geminiApprovalMode: "yolo",
