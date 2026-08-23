@@ -1,4 +1,5 @@
 # Dockerfile for running all tests in a container
+# Node 22 is the current LTS (Jod, released April 2024, active LTS until Oct 2025)
 FROM node:22-alpine
 
 # Install pnpm

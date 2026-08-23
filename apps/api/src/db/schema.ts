@@ -268,7 +268,7 @@ export const repos = pgTable(
     copilotEffort: text("copilot_effort"), // "low", "medium", "high"
     opencodeModel: text("opencode_model"), // e.g. "anthropic/claude-sonnet-4", null = OpenCode default
     opencodeAgent: text("opencode_agent"), // e.g. "build", "plan", null = default
-    opencodeProvider: text("opencode_provider").default("native"), // "native" | "litellm" | "openai-compatible"
+    opencodeProvider: text("opencode_provider").default("native"), // "native" | "litellm" | "openai-compatible" | legacy: "anthropic" | "openai" | "groq" | "google" | "mistral" | "cohere" (all map to native)
     opencodeBaseUrl: text("opencode_base_url"), // Custom OpenAI-compatible endpoint URL (e.g. http://lightllm:8080/v1)
     opencodeModeModels: jsonb("opencode_mode_models").$type<{
       plan?: string;
