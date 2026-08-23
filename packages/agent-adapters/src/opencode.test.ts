@@ -76,7 +76,7 @@ describe("OpenCodeAdapter", () => {
       expect(config.env.OPTIO_REPO_BRANCH).toBe("main");
     });
 
-    it("requires provider API key secrets", () => {
+    it("requires provider API key secrets when no provider config", () => {
       const config = adapter.buildContainerConfig(baseInput);
       expect(config.requiredSecrets).toContain("ANTHROPIC_API_KEY");
       expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
@@ -104,53 +104,45 @@ describe("OpenCodeAdapter", () => {
       expect(config.env.OPTIO_OPENCODE_AGENT).toBeUndefined();
     });
 
-    it("sets OPENAI_BASE_URL when opencodeBaseUrl is provided", () => {
+    it("sets OPENAI_BASE_URL when provider config is present", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
+        opencodeProvider: "litellm",
         opencodeBaseUrl: "http://lightllm-server:8080/v1",
       });
       expect(config.env.OPENAI_BASE_URL).toBe("http://lightllm-server:8080/v1");
     });
 
-    it("sets placeholder OPENAI_API_KEY when opencodeBaseUrl is provided", () => {
+    it("sets placeholder OPENAI_API_KEY when provider config is present", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
+        opencodeProvider: "litellm",
         opencodeBaseUrl: "http://localhost:8080/v1",
       });
       expect(config.env.OPENAI_API_KEY).toBe("sk-no-key-required");
     });
 
-    it("does not require provider API key secrets when opencodeBaseUrl is set but opencodeLiteLLMModels is not", () => {
+    it("requires OPENAI_API_KEY when provider config is present", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
+        opencodeProvider: "litellm",
         opencodeBaseUrl: "http://localhost:8080/v1",
-      });
-      expect(config.requiredSecrets).not.toContain("ANTHROPIC_API_KEY");
-      expect(config.requiredSecrets).not.toContain("OPENAI_API_KEY");
-    });
-
-    it("requires OPENAI_API_KEY when both opencodeBaseUrl and opencodeLiteLLMModels are set", () => {
-      const config = adapter.buildContainerConfig({
-        ...baseInput,
-        opencodeBaseUrl: "http://localhost:8080/v1",
-        opencodeLiteLLMModels: {
-          code: "qwen-2.5-coder",
-        },
       });
       expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
       expect(config.requiredSecrets).not.toContain("ANTHROPIC_API_KEY");
     });
 
-    it("does not set OPENAI_BASE_URL when opencodeBaseUrl is not provided", () => {
+    it("does not set OPENAI_BASE_URL when provider config is not present", () => {
       const config = adapter.buildContainerConfig(baseInput);
       expect(config.env.OPENAI_BASE_URL).toBeUndefined();
     });
 
-    it("includes opencode config as setup file with LiteLLM Proxy configuration when both opencodeBaseUrl and opencodeLiteLLMModels are provided", () => {
+    it("includes opencode config as setup file with LiteLLM Proxy configuration when provider is litellm and mode models are provided", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
+        opencodeProvider: "litellm",
         opencodeBaseUrl: "http://lightllm-server:8080/v1",
-        opencodeLiteLLMModels: {
+        opencodeModeModels: {
           plan: "plan-model",
           review: "review-model",
           code: "code-model",
@@ -190,31 +182,62 @@ describe("OpenCodeAdapter", () => {
         },
         agent: {
           build: {
-            model: "litellm/code-model",
+            model: "code-model",
             description: "Default implementation agent",
           },
           plan: {
-            model: "litellm/plan-model",
+            model: "plan-model",
             description: "Planning agent",
             permission: { edit: "deny", bash: "deny" },
           },
           review: {
             mode: "subagent",
-            model: "litellm/review-model",
+            model: "review-model",
             description: "Code review",
             permission: { edit: "deny", bash: "deny" },
           },
           lint: {
             mode: "subagent",
-            model: "litellm/lint-model",
+            model: "lint-model",
             description: "Linting & fixes",
             permission: { edit: "allow", bash: "allow" },
           },
           quick: {
             mode: "subagent",
-            model: "litellm/quick-model",
+            model: "quick-model",
             description: "Fast responses",
             steps: 5,
+          },
+        },
+      });
+    });
+
+    it("includes opencode config with openai-compatible provider when provider is openai-compatible", () => {
+      const config = adapter.buildContainerConfig({
+        ...baseInput,
+        opencodeProvider: "openai-compatible",
+        opencodeBaseUrl: "http://vllm-server:8000/v1",
+        opencodeModeModels: {
+          code: "my-code-model",
+          chat: "my-chat-model",
+        },
+      });
+      const configFile = config.setupFiles?.find((f) =>
+        f.path.includes(".config/opencode/opencode.json"),
+      );
+      expect(configFile).toBeDefined();
+      const parsedConfig = JSON.parse(configFile!.content);
+      expect(parsedConfig.provider).toEqual({
+        "openai-compatible": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "OpenAI Compatible",
+          options: {
+            baseURL: "http://vllm-server:8000/v1",
+            apiKey: "{env:OPENAI_API_KEY}",
+          },
+          models: {
+            "my-code-model": { name: "my-code-model" },
+            "my-chat-model": { name: "my-chat-model" },
           },
         },
       });
@@ -223,8 +246,9 @@ describe("OpenCodeAdapter", () => {
     it("omits missing models from the provider.models mapping and agent mappings", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
+        opencodeProvider: "litellm",
         opencodeBaseUrl: "http://lightllm-server:8080/v1",
-        opencodeLiteLLMModels: {
+        opencodeModeModels: {
           code: "code-model",
           chat: "chat-model",
         },
@@ -242,10 +266,48 @@ describe("OpenCodeAdapter", () => {
       });
       expect(parsedConfig.agent).toEqual({
         build: {
-          model: "litellm/code-model",
+          model: "code-model",
           description: "Default implementation agent",
         },
       });
+    });
+
+    it("includes mode models in agent config even without provider config (native mode)", () => {
+      const config = adapter.buildContainerConfig({
+        ...baseInput,
+        opencodeModeModels: {
+          code: "my-code-model",
+          plan: "my-plan-model",
+          chat: "my-chat-model",
+        },
+      });
+      const configFile = config.setupFiles?.find((f) =>
+        f.path.includes(".config/opencode/opencode.json"),
+      );
+      expect(configFile).toBeDefined();
+      const parsedConfig = JSON.parse(configFile!.content);
+      expect(parsedConfig).toEqual({
+        $schema: "https://opencode.ai/config.json",
+        model: "my-chat-model",
+        agent: {
+          build: {
+            model: "my-code-model",
+            description: "Default implementation agent",
+          },
+          plan: {
+            model: "my-plan-model",
+            description: "Planning agent",
+            permission: { edit: "deny", bash: "deny" },
+          },
+        },
+      });
+      // No provider config when native
+      expect(parsedConfig.provider).toBeUndefined();
+    });
+
+    it("does not set OPENAI_BASE_URL when provider config is not provided", () => {
+      const config = adapter.buildContainerConfig(baseInput);
+      expect(config.env.OPENAI_BASE_URL).toBeUndefined();
     });
 
     it("includes opencode config as setup file", () => {

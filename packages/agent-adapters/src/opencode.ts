@@ -1,4 +1,9 @@
-import type { AgentTaskInput, AgentContainerConfig, AgentResult } from "@optio/shared";
+import type {
+  AgentTaskInput,
+  AgentContainerConfig,
+  AgentResult,
+  OpenCodeProvider,
+} from "@optio/shared";
 import { TASK_BRANCH_PREFIX } from "@optio/shared";
 import type { AgentAdapter } from "./types.js";
 
@@ -19,14 +24,22 @@ import type { AgentAdapter } from "./types.js";
  * not exhaustively documented and may change between versions.
  */
 
+interface OpencodeConfig {
+  $schema: string;
+  model?: string;
+  small_model?: string;
+  provider?: Record<string, unknown>;
+  agent?: Record<string, unknown>;
+}
+
 export class OpenCodeAdapter implements AgentAdapter {
   readonly type = "opencode";
   readonly displayName = "OpenCode";
 
   validateSecrets(availableSecrets: string[]): { valid: boolean; missing: string[] } {
     // OpenCode is provider-agnostic — it needs at least one provider API key.
-    // Note: when opencodeBaseUrl is set, buildContainerConfig() skips requiredSecrets
-    // and injects a placeholder key, so missing provider keys won't block execution.
+    // Note: when opencodeBaseUrl is set with a provider, buildContainerConfig()
+    // skips requiredSecrets and injects a placeholder key, so missing provider keys won't block execution.
     const acceptedKeys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"];
     const hasAny = acceptedKeys.some((k) => availableSecrets.includes(k));
     return {
@@ -51,14 +64,16 @@ export class OpenCodeAdapter implements AgentAdapter {
     // These are injected via requiredSecrets
     const requiredSecrets: string[] = [];
 
-    // When using a custom base URL, provider API keys are optional — the adapter
-    // sets a placeholder OPENAI_API_KEY in env that will be overridden if a real
-    // secret exists. Without a custom base URL, require standard provider keys.
-    // If opencodeBaseUrl and opencodeLiteLLMModels are both present, require OPENAI_API_KEY.
-    if (input.opencodeBaseUrl && input.opencodeLiteLLMModels) {
-      requiredSecrets.push("OPENAI_API_KEY");
-    } else if (!input.opencodeBaseUrl) {
+    const hasProviderConfig = !!(input.opencodeProvider && input.opencodeBaseUrl);
+
+    // When using a provider with custom base URL, provider API keys are optional — the adapter
+    // sets a placeholder OPENAI_API_KEY in env that will be overridden if a real secret exists.
+    // Without a provider config, require standard provider keys for native OpenCode.
+    if (!hasProviderConfig) {
       requiredSecrets.push("ANTHROPIC_API_KEY", "OPENAI_API_KEY");
+    } else {
+      // For proxy providers, we need OPENAI_API_KEY for the proxy
+      requiredSecrets.push("OPENAI_API_KEY");
     }
 
     const setupFiles: AgentContainerConfig["setupFiles"] = [];
@@ -72,99 +87,21 @@ export class OpenCodeAdapter implements AgentAdapter {
       env.OPTIO_OPENCODE_AGENT = input.opencodeAgent;
     }
 
-    // Custom OpenAI-compatible endpoint (e.g. vLLM, lightllm, Ollama)
-    if (input.opencodeBaseUrl) {
-      env.OPENAI_BASE_URL = input.opencodeBaseUrl;
+    // Custom OpenAI-compatible endpoint (e.g. vLLM, lightllm, Ollama) via provider config
+    if (hasProviderConfig) {
+      env.OPENAI_BASE_URL = input.opencodeBaseUrl!;
       // Local endpoints typically don't require a real API key — set a
       // placeholder that gets overridden if a real secret is configured.
       env.OPENAI_API_KEY = "sk-no-key-required";
     }
 
-    if (input.opencodeBaseUrl && input.opencodeLiteLLMModels) {
-      const models: Record<string, { name: string }> = {};
-      const { plan, review, code, chat, quick, lint, small } = input.opencodeLiteLLMModels;
+    // Build the opencode.json config
+    const config = this.buildOpencodeConfig(input, hasProviderConfig);
 
-      const allModelNames = [plan, review, code, chat, quick, lint, small].filter(
-        (m): m is string => typeof m === "string" && m.trim().length > 0,
-      );
-
-      for (const m of allModelNames) {
-        models[m] = { name: m };
-      }
-
-      const config: any = {
-        $schema: "https://opencode.ai/config.json",
-      };
-
-      if (chat) {
-        config.model = chat;
-      }
-      if (small) {
-        config.small_model = small;
-      }
-
-      config.provider = {
-        litellm: {
-          npm: "@ai-sdk/openai-compatible",
-          name: "LiteLLM Proxy",
-          options: {
-            baseURL: input.opencodeBaseUrl,
-            apiKey: "{env:OPENAI_API_KEY}",
-          },
-          models,
-        },
-      };
-
-      config.agent = {};
-      if (code) {
-        config.agent.build = {
-          model: `litellm/${code}`,
-          description: "Default implementation agent",
-        };
-      }
-      if (plan) {
-        config.agent.plan = {
-          model: `litellm/${plan}`,
-          description: "Planning agent",
-          permission: { edit: "deny", bash: "deny" },
-        };
-      }
-      if (review) {
-        config.agent.review = {
-          mode: "subagent",
-          model: `litellm/${review}`,
-          description: "Code review",
-          permission: { edit: "deny", bash: "deny" },
-        };
-      }
-      if (lint) {
-        config.agent.lint = {
-          mode: "subagent",
-          model: `litellm/${lint}`,
-          description: "Linting & fixes",
-          permission: { edit: "allow", bash: "allow" },
-        };
-      }
-      if (quick) {
-        config.agent.quick = {
-          mode: "subagent",
-          model: `litellm/${quick}`,
-          description: "Fast responses",
-          steps: 5,
-        };
-      }
-
-      setupFiles.push({
-        path: "/home/agent/.config/opencode/opencode.json",
-        content: JSON.stringify(config, null, 2),
-      });
-    } else {
-      // Pre-seed a minimal opencode config so the CLI doesn't hit first-run setup
-      setupFiles.push({
-        path: "/home/agent/.config/opencode/opencode.json",
-        content: JSON.stringify({ $schema: "https://opencode.ai/config.json" }),
-      });
-    }
+    setupFiles.push({
+      path: "/home/agent/.config/opencode/opencode.json",
+      content: JSON.stringify(config, null, 2),
+    });
 
     // Write the task file into the worktree
     if (input.taskFileContent && input.taskFilePath) {
@@ -180,6 +117,121 @@ export class OpenCodeAdapter implements AgentAdapter {
       requiredSecrets,
       setupFiles,
     };
+  }
+
+  private buildOpencodeConfig(input: AgentTaskInput, hasProviderConfig: boolean): OpencodeConfig {
+    const config: OpencodeConfig = {
+      $schema: "https://opencode.ai/config.json",
+    };
+
+    // Apply mode models - ALWAYS, regardless of provider
+    // These are provider-independent model selections for each mode
+    if (input.opencodeModeModels) {
+      const { plan, review, code, chat, quick, lint, small } = input.opencodeModeModels;
+
+      if (chat) {
+        config.model = chat;
+      }
+      if (small) {
+        config.small_model = small;
+      }
+
+      config.agent = {};
+      if (code) {
+        config.agent.build = {
+          model: code,
+          description: "Default implementation agent",
+        };
+      }
+      if (plan) {
+        config.agent.plan = {
+          model: plan,
+          description: "Planning agent",
+          permission: { edit: "deny", bash: "deny" },
+        };
+      }
+      if (review) {
+        config.agent.review = {
+          mode: "subagent",
+          model: review,
+          description: "Code review",
+          permission: { edit: "deny", bash: "deny" },
+        };
+      }
+      if (lint) {
+        config.agent.lint = {
+          mode: "subagent",
+          model: lint,
+          description: "Linting & fixes",
+          permission: { edit: "allow", bash: "allow" },
+        };
+      }
+      if (quick) {
+        config.agent.quick = {
+          mode: "subagent",
+          model: quick,
+          description: "Fast responses",
+          steps: 5,
+        };
+      }
+    }
+
+    // Provider-specific configuration - ONLY when explicitly configured
+    if (hasProviderConfig) {
+      const provider = input.opencodeProvider!;
+      const baseUrl = input.opencodeBaseUrl!;
+
+      if (provider === "litellm") {
+        config.provider = {
+          litellm: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "LiteLLM Proxy",
+            options: {
+              baseURL: baseUrl,
+              apiKey: "{env:OPENAI_API_KEY}",
+            },
+            models: this.buildModelsMap(input.opencodeModeModels),
+          },
+        };
+      } else if (provider === "openai-compatible") {
+        config.provider = {
+          "openai-compatible": {
+            npm: "@ai-sdk/openai-compatible",
+            name: "OpenAI Compatible",
+            options: {
+              baseURL: baseUrl,
+              apiKey: "{env:OPENAI_API_KEY}",
+            },
+            models: this.buildModelsMap(input.opencodeModeModels),
+          },
+        };
+      }
+      // "native" provider = no provider config, OpenCode uses its own defaults
+    }
+
+    return config;
+  }
+
+  private buildModelsMap(
+    modeModels: AgentTaskInput["opencodeModeModels"],
+  ): Record<string, { name: string }> {
+    if (!modeModels) return {};
+
+    const models: Record<string, { name: string }> = {};
+    const allModelNames = [
+      modeModels.plan,
+      modeModels.review,
+      modeModels.code,
+      modeModels.chat,
+      modeModels.quick,
+      modeModels.lint,
+      modeModels.small,
+    ].filter((m): m is string => typeof m === "string" && m.trim().length > 0);
+
+    for (const m of allModelNames) {
+      models[m] = { name: m };
+    }
+    return models;
   }
 
   parseResult(exitCode: number, logs: string): AgentResult {

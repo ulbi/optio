@@ -28,9 +28,9 @@ export interface RepoRecord {
   copilotEffort: string | null;
   opencodeModel: string | null;
   opencodeAgent: string | null;
-  opencodeProvider: string | null;
+  opencodeProvider: "native" | "litellm" | "openai-compatible" | null;
   opencodeBaseUrl: string | null;
-  opencodeLiteLLMModels: {
+  opencodeModeModels: {
     plan?: string;
     review?: string;
     code?: string;
