@@ -586,8 +586,8 @@
     {
       "idx": 83,
       "version": "7",
-      "when": 1787374410000,
-      "tag": "1787374410_opencode_litellm_models",
+      "when": 1787491994000,
+      "tag": "1787491994_opencode_mode_models",
       "breakpoints": true
     }
   ]
