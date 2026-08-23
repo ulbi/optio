@@ -4,8 +4,6 @@ export type CopilotAuthMode = "github-token";
 export type GeminiAuthMode = "api-key" | "vertex-ai";
 export type OpenClawAuthMode = "api-key";
 
-export type OpenCodeProvider = "native" | "litellm" | "openai-compatible";
-
 export interface AgentTaskInput {
   taskId: string;
   prompt: string;
@@ -32,7 +30,7 @@ export interface AgentTaskInput {
   copilotEffort?: string;
   opencodeModel?: string;
   opencodeAgent?: string;
-  opencodeProvider?: OpenCodeProvider;
+  opencodeProvider?: string; // "native" | "litellm" | "openai-compatible" | legacy: "anthropic" | "openai" | "groq" | "google" | "mistral" | "cohere"
   opencodeBaseUrl?: string;
   opencodeModeModels?: {
     plan?: string;

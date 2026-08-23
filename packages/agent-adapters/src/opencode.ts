@@ -1,9 +1,4 @@
-import type {
-  AgentTaskInput,
-  AgentContainerConfig,
-  AgentResult,
-  OpenCodeProvider,
-} from "@optio/shared";
+import type { AgentTaskInput, AgentContainerConfig, AgentResult } from "@optio/shared";
 import { TASK_BRANCH_PREFIX } from "@optio/shared";
 import type { AgentAdapter } from "./types.js";
 
@@ -64,11 +59,18 @@ export class OpenCodeAdapter implements AgentAdapter {
     // These are injected via requiredSecrets
     const requiredSecrets: string[] = [];
 
-    const hasProviderConfig = !!(input.opencodeProvider && input.opencodeBaseUrl);
+    // Only actual proxy providers (litellm, openai-compatible) with baseUrl need proxy config
+    // Legacy values (anthropic, openai, groq, etc.) and "native" are native mode
+    const legacyProviders = ["anthropic", "openai", "groq", "google", "mistral", "cohere"] as const;
+    const isProxyProvider = Boolean(
+      (input.opencodeProvider === "litellm" || input.opencodeProvider === "openai-compatible") &&
+      input.opencodeBaseUrl,
+    );
+    const isLegacyProvider = legacyProviders.includes(input.opencodeProvider as any);
+    const hasProviderConfig = isProxyProvider;
 
-    // When using a provider with custom base URL, provider API keys are optional — the adapter
-    // sets a placeholder OPENAI_API_KEY in env that will be overridden if a real secret exists.
-    // Without a provider config, require standard provider keys for native OpenCode.
+    // When using a proxy provider with custom base URL, we need OPENAI_API_KEY for the proxy
+    // Without a proxy config (native or legacy), require standard provider keys for native OpenCode.
     if (!hasProviderConfig) {
       requiredSecrets.push("ANTHROPIC_API_KEY", "OPENAI_API_KEY");
     } else {

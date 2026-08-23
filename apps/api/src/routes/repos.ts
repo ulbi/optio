@@ -48,7 +48,7 @@ const updateRepoSchema = z
     copilotEffort: z.string().optional(),
     opencodeModel: z.string().optional(),
     opencodeAgent: z.string().optional(),
-    opencodeProvider: z.enum(["native", "litellm", "openai-compatible"]).optional(),
+    opencodeProvider: z.string().optional(),
     opencodeBaseUrl: z.string().url().nullable().optional(),
     opencodeModeModels: z
       .object({
