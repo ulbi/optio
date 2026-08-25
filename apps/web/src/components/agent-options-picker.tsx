@@ -15,7 +15,7 @@ import { api } from "@/lib/api-client";
  * provider-specific option. Keys match `ProviderCatalog.modelField` and
  * `OptionField.key`, which in turn mirror the DB columns on `repos`.
  */
-export type AgentOptionsValues = Record<string, string | boolean>;
+export type AgentOptionsValues = Record<string, string | boolean | Record<string, string>>;
 
 interface Props {
   provider: AgentProviderId;
@@ -115,7 +115,7 @@ export function AgentOptionsPicker({
   const modelValue = String(values[catalog.modelField] ?? "");
   const canRefresh = catalog.liveRefreshSupported && !hideRefresh;
 
-  const setField = (key: string, value: string | boolean) => {
+  const setField = (key: string, value: string | boolean | Record<string, string>) => {
     onChange({ ...values, [key]: value });
   };
 
@@ -251,6 +251,44 @@ export function AgentOptionsPicker({
                   {field.helpText && (
                     <p className="text-xs text-text-muted mt-1">{field.helpText}</p>
                   )}
+                </div>
+              );
+            })}
+        </div>
+      )}
+
+      {catalog.options.some((f) => f.kind === "modeModels") && (
+        <div className="space-y-3">
+          {catalog.options
+            .filter((f) => f.kind === "modeModels")
+            .map((field) => {
+              const v = values[field.key];
+              const modeModels = (
+                typeof v === "object" && v !== null ? v : (field.default ?? {})
+              ) as Record<string, string>;
+              return (
+                <div key={field.key}>
+                  <label className="block text-xs text-text-muted mb-1">{field.label}</label>
+                  {field.helpText && (
+                    <p className="text-xs text-text-muted mb-2">{field.helpText}</p>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {(field.modes ?? []).map((mode) => (
+                      <div key={mode} className="space-y-1">
+                        <label className="block text-[10px] text-text-muted capitalize">
+                          {mode}
+                        </label>
+                        <input
+                          value={modeModels[mode] ?? ""}
+                          onChange={(e) =>
+                            setField(field.key, { ...modeModels, [mode]: e.target.value })
+                          }
+                          placeholder={`Default for ${mode}`}
+                          className="w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-xs font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })}

@@ -61,16 +61,18 @@ export interface OptionField {
   key: string;
   /** Human-readable label. */
   label: string;
-  /** Control type. `select` = dropdown, `boolean` = checkbox, `text` = input. */
-  kind: "select" | "boolean" | "text";
+  /** Control type. `select` = dropdown, `boolean` = checkbox, `text` = input, `modeModels` = grid for mode-to-model mappings. */
+  kind: "select" | "boolean" | "text" | "modeModels";
   /** Select choices (only for `kind: "select"`). */
   choices?: OptionChoice[];
   /** Default value applied when no repo override is set. */
-  default?: string | boolean;
+  default?: string | boolean | Record<string, string>;
   /** Free-text placeholder. */
   placeholder?: string;
   /** Supplementary help text shown beneath the control. */
   helpText?: string;
+  /** Modes for modeModels kind (e.g. ["plan", "review", "code", "chat", "quick", "lint", "small"]). */
+  modes?: readonly string[];
 }
 
 export interface ProviderCatalog {

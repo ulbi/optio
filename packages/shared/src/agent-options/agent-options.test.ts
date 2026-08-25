@@ -7,6 +7,8 @@ import {
   OPENAI_CATALOG,
   OPENCLAW_CATALOG,
   OPENCODE_CATALOG,
+  OPencodeMODES,
+  OPencodePROVIDER_CHOICES,
   PROVIDER_CATALOGS,
   getProviderCatalog,
   groupModelsByFamily,
@@ -58,6 +60,55 @@ describe("PROVIDER_CATALOGS", () => {
     expect(GEMINI_CATALOG.modelField).toBe("geminiModel");
     expect(OPENCODE_CATALOG.modelField).toBe("opencodeModel");
     expect(OPENCLAW_CATALOG.modelField).toBe("openclawModel");
+  });
+});
+
+describe("OpenCode catalog new fields", () => {
+  it("has opencodeProvider as a select option with valid choices", () => {
+    const providerField = OPENCODE_CATALOG.options.find((o) => o.key === "opencodeProvider");
+    expect(providerField).toBeDefined();
+    expect(providerField!.kind).toBe("select");
+    expect(providerField!.choices).toBeDefined();
+    const values = providerField!.choices!.map((c) => c.value);
+    expect(values).toContain("native");
+    expect(values).toContain("litellm");
+    expect(values).toContain("openai-compatible");
+    // legacy providers
+    expect(values).toContain("anthropic");
+    expect(values).toContain("openai");
+    expect(values).toContain("groq");
+    expect(values).toContain("google");
+    expect(values).toContain("mistral");
+    expect(values).toContain("cohere");
+  });
+
+  it("has opencodeModeModels as a modeModels option with all 7 modes", () => {
+    const modeModelsField = OPENCODE_CATALOG.options.find((o) => o.key === "opencodeModeModels");
+    expect(modeModelsField).toBeDefined();
+    expect(modeModelsField!.kind).toBe("modeModels");
+    expect(modeModelsField!.modes).toBeDefined();
+    expect(modeModelsField!.modes).toEqual([
+      "plan",
+      "review",
+      "code",
+      "chat",
+      "quick",
+      "lint",
+      "small",
+    ]);
+  });
+
+  it("OPencodeMODES constant has exactly 7 modes", () => {
+    expect(OPencodeMODES).toHaveLength(7);
+    expect(OPencodeMODES).toEqual(["plan", "review", "code", "chat", "quick", "lint", "small"]);
+  });
+
+  it("OPencodePROVIDER_CHOICES has correct structure", () => {
+    expect(OPencodePROVIDER_CHOICES.length).toBe(9); // 2 proxy + 1 default + 6 legacy
+    const nativeChoice = OPencodePROVIDER_CHOICES.find((c) => c.value === "native");
+    expect(nativeChoice).toBeDefined();
+    expect(nativeChoice!.label).toBe("Native (default)");
+    expect(nativeChoice!.hint).toContain("built-in");
   });
 });
 

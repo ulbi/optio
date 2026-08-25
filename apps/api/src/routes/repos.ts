@@ -48,7 +48,20 @@ const updateRepoSchema = z
     copilotEffort: z.string().optional(),
     opencodeModel: z.string().optional(),
     opencodeAgent: z.string().optional(),
-    opencodeProvider: z.string().optional(), // "native" | "litellm" | "openai-compatible" | legacy: "anthropic" | "openai" | "groq" | "google" | "mistral" | "cohere"
+    opencodeProvider: z
+      .enum([
+        "native",
+        "litellm",
+        "openai-compatible",
+        "anthropic",
+        "openai",
+        "groq",
+        "google",
+        "mistral",
+        "cohere",
+      ])
+      .optional()
+      .default("native"),
     opencodeBaseUrl: z.string().url().nullable().optional(),
     opencodeModeModels: z
       .object({

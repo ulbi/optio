@@ -2,7 +2,7 @@ import { ANTHROPIC_CATALOG } from "./anthropic.js";
 import { OPENAI_CATALOG } from "./openai.js";
 import { GEMINI_CATALOG } from "./gemini.js";
 import { COPILOT_CATALOG } from "./copilot.js";
-import { OPENCODE_CATALOG } from "./opencode.js";
+import { OPENCODE_CATALOG, OPencodeMODES, OPencodePROVIDER_CHOICES } from "./opencode.js";
 import { OPENCLAW_CATALOG } from "./openclaw.js";
 import { CURSOR_CATALOG } from "./cursor.js";
 import type { AgentProviderId, LiveModel, ModelOption, ProviderCatalog } from "./types.js";
@@ -15,11 +15,12 @@ export type {
   OptionField,
   ProviderCatalog,
 } from "./types.js";
+export type { OpencodeProvider } from "./opencode.js";
 export { ANTHROPIC_CATALOG } from "./anthropic.js";
 export { OPENAI_CATALOG } from "./openai.js";
 export { GEMINI_CATALOG } from "./gemini.js";
 export { COPILOT_CATALOG } from "./copilot.js";
-export { OPENCODE_CATALOG } from "./opencode.js";
+export { OPENCODE_CATALOG, OPencodeMODES, OPencodePROVIDER_CHOICES } from "./opencode.js";
 export { OPENCLAW_CATALOG } from "./openclaw.js";
 export { CURSOR_CATALOG } from "./cursor.js";
 
