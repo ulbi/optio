@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { shellSingleQuote, buildEnvExports } from "./pod-env.js";
+import { shellSingleQuote, buildEnvExports, maskSecrets } from "./pod-env.js";
 
 /**
  * Regression payload for the Phase 4F shell-quoting bug: a realistic task
@@ -104,5 +104,47 @@ describe("buildEnvExports", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("maskSecrets", () => {
+  it("masks known secret keys", () => {
+    const env = {
+      ANTHROPIC_API_KEY: "sk-ant-12345",
+      OPENAI_API_KEY: "sk-oai-67890",
+      GROQ_API_KEY: "sk-groq-11111",
+      CLAUDE_CODE_OAUTH_TOKEN: "oauth-token",
+      CLAUDE_VERTEX_SERVICE_ACCOUNT_KEY: '{"type":"service_account"}',
+      OTHER_TOKEN: "secret",
+    };
+    const masked = maskSecrets(env);
+    expect(masked.ANTHROPIC_API_KEY).toBe("****");
+    expect(masked.OPENAI_API_KEY).toBe("****");
+    expect(masked.GROQ_API_KEY).toBe("****");
+    expect(masked.CLAUDE_CODE_OAUTH_TOKEN).toBe("****");
+    expect(masked.CLAUDE_VERTEX_SERVICE_ACCOUNT_KEY).toBe("****");
+    expect(masked.OTHER_TOKEN).toBe("****");
+  });
+
+  it("does not mask non-secret keys", () => {
+    const env = {
+      OPTIO_TASK_ID: "task-123",
+      OPTIO_REPO_URL: "https://github.com/org/repo",
+      OPTIO_PROMPT: "Fix the bug",
+    };
+    const masked = maskSecrets(env);
+    expect(masked).toEqual(env);
+  });
+
+  it("masks keys containing API_KEY or TOKEN", () => {
+    const env = {
+      CUSTOM_API_KEY: "custom-value",
+      MY_TOKEN: "token-value",
+      NORMAL_KEY: "normal",
+    };
+    const masked = maskSecrets(env);
+    expect(masked.CUSTOM_API_KEY).toBe("****");
+    expect(masked.MY_TOKEN).toBe("****");
+    expect(masked.NORMAL_KEY).toBe("normal");
   });
 });

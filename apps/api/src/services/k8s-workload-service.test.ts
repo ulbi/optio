@@ -107,3 +107,77 @@ describe("rootless mode (OPTIO_ROOTLESS, issue #532)", () => {
     expect(initNames).toEqual(["custom-init"]);
   });
 });
+
+describe("State 1: Secret injection into StatefulSet pod template", () => {
+  it("buildPodTemplate includes provider API keys from spec.env in pod env array", () => {
+    const spec = baseSpec({
+      env: {
+        OPTIO_TASK_ID: "task-123",
+        OPTIO_REPO_URL: "https://github.com/org/repo",
+        ANTHROPIC_API_KEY: "sk-ant-test-key",
+        OPENAI_API_KEY: "sk-oai-test-key",
+        GROQ_API_KEY: "sk-groq-test-key",
+      },
+    });
+    const template = buildTemplate(spec, "Always");
+    const env = template.spec.containers[0].env as Array<{ name: string; value: string }>;
+
+    expect(env).toContainEqual({ name: "OPTIO_TASK_ID", value: "task-123" });
+    expect(env).toContainEqual({ name: "ANTHROPIC_API_KEY", value: "sk-ant-test-key" });
+    expect(env).toContainEqual({ name: "OPENAI_API_KEY", value: "sk-oai-test-key" });
+    expect(env).toContainEqual({ name: "GROQ_API_KEY", value: "sk-groq-test-key" });
+  });
+
+  it("buildPodTemplate includes OPENCODE_MODEL for opencode agent", () => {
+    const spec = baseSpec({
+      env: {
+        OPTIO_TASK_ID: "task-456",
+        OPTIO_OPENCODE_MODEL: "claude-sonnet-4",
+        ANTHROPIC_API_KEY: "sk-ant-claude-key",
+      },
+    });
+    const template = buildTemplate(spec, "Always");
+    const env = template.spec.containers[0].env as Array<{ name: string; value: string }>;
+
+    expect(env).toContainEqual({ name: "OPTIO_OPENCODE_MODEL", value: "claude-sonnet-4" });
+    expect(env).toContainEqual({ name: "ANTHROPIC_API_KEY", value: "sk-ant-claude-key" });
+  });
+
+  it("buildPodTemplate includes all OpenCode-related env vars from task-worker", () => {
+    const spec = baseSpec({
+      env: {
+        OPTIO_TASK_ID: "task-789",
+        OPTIO_REPO_URL: "https://github.com/org/another-repo",
+        OPTIO_REPO_BRANCH: "main",
+        OPTIO_PROMPT: "Fix this bug",
+        OPTIO_AGENT_TYPE: "opencode",
+        OPTIO_OPENCODE_MODEL: "gpt-4o",
+        ANTHROPIC_API_KEY: "sk-ant-key",
+        OPENAI_API_KEY: "sk-oai-key",
+      },
+    });
+    const template = buildTemplate(spec, "Always");
+    const env = template.spec.containers[0].env as Array<{ name: string; value: string }>;
+
+    const envMap = Object.fromEntries(env.map((e) => [e.name, e.value]));
+    expect(envMap["OPTIO_TASK_ID"]).toBe("task-789");
+    expect(envMap["OPTIO_OPENCODE_MODEL"]).toBe("gpt-4o");
+    expect(envMap["ANTHROPIC_API_KEY"]).toBe("sk-ant-key");
+    expect(envMap["OPENAI_API_KEY"]).toBe("sk-oai-key");
+  });
+
+  it("buildPodTemplate does not include secrets when env is empty", () => {
+    const spec = baseSpec({
+      env: {
+        OPTIO_TASK_ID: "task-no-secrets",
+        OPTIO_PROMPT: "Test task",
+      },
+    });
+    const template = buildTemplate(spec, "Always");
+    const env = template.spec.containers[0].env as Array<{ name: string; value: string }>;
+
+    expect(env).toContainEqual({ name: "OPTIO_TASK_ID", value: "task-no-secrets" });
+    expect(env).not.toContainEqual(expect.objectContaining({ name: "ANTHROPIC_API_KEY" }));
+    expect(env).not.toContainEqual(expect.objectContaining({ name: "OPENAI_API_KEY" }));
+  });
+});

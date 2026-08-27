@@ -35,3 +35,24 @@ export function buildEnvExports(env: Record<string, string>): string[] {
     return `export ${key}=${shellSingleQuote(String(value))}`;
   });
 }
+
+/** Names of environment variables that contain secrets and should be masked in logs */
+const SECRET_ENV_NAMES = new Set([
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "GROQ_API_KEY",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "CLAUDE_VERTEX_SERVICE_ACCOUNT_KEY",
+  "TOKEN",
+]);
+
+/** Mask secret values in an env record for safe logging */
+export function maskSecrets(env: Record<string, string>): Record<string, string> {
+  const masked = { ...env };
+  for (const key of Object.keys(masked)) {
+    if (SECRET_ENV_NAMES.has(key) || key.includes("API_KEY") || key.includes("TOKEN")) {
+      masked[key] = masked[key].length > 4 ? "****" : "****";
+    }
+  }
+  return masked;
+}

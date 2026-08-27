@@ -282,6 +282,218 @@ describe("OpenCodeAdapter", () => {
     });
   });
 
+  describe("State 1: Native Provider (Anthropic/OpenAI/Groq), NO Detail Models", () => {
+    const baseInput = {
+      taskId: "test-123",
+      prompt: "Fix the bug",
+      repoUrl: "https://github.com/org/repo",
+      repoBranch: "main",
+    };
+
+    describe("1a - Native Anthropic, only ANTHROPIC_API_KEY set", () => {
+      it("sets opencode.json with only $schema (no model, no provider config)", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "anthropic",
+        });
+        const configFile = config.setupFiles?.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        expect(configFile).toBeDefined();
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+      });
+
+      it("sets ANTHROPIC_API_KEY env var and no OPENCODE_MODEL", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "anthropic",
+        });
+        expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
+        expect(config.env.OPENAI_API_KEY).toBeUndefined();
+        expect(config.env.GROQ_API_KEY).toBeUndefined();
+        expect(config.env.OPENCODE_MODEL).toBeUndefined();
+        expect(config.env.OPTIO_OPENCODE_MODEL).toBeUndefined();
+      });
+
+      it("requires ANTHROPIC_API_KEY and OPENAI_API_KEY for native mode", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "anthropic",
+        });
+        expect(config.requiredSecrets).toContain("ANTHROPIC_API_KEY");
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+    });
+
+    describe("1b - Native Anthropic, ANTHROPIC_API_KEY + OPENCODE_DEFAULT_MODEL set", () => {
+      it("sets opencode.json with only $schema (model via env var)", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "anthropic",
+          opencodeModel: "claude-sonnet-4",
+        });
+        const configFile = config.setupFiles?.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        expect(configFile).toBeDefined();
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+      });
+
+      it("sets OPTIO_OPENCODE_MODEL env var with default model", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "anthropic",
+          opencodeModel: "claude-sonnet-4",
+        });
+        expect(config.env.OPTIO_OPENCODE_MODEL).toBe("claude-sonnet-4");
+      });
+
+      it("requires ANTHROPIC_API_KEY and OPENAI_API_KEY for native mode", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "anthropic",
+          opencodeModel: "claude-sonnet-4",
+        });
+        expect(config.requiredSecrets).toContain("ANTHROPIC_API_KEY");
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+    });
+
+    describe("1c - Native OpenAI, only OPENAI_API_KEY set", () => {
+      it("sets opencode.json with only $schema (no model, no provider config)", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "openai",
+        });
+        const configFile = config.setupFiles?.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        expect(configFile).toBeDefined();
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+      });
+
+      it("requires ANTHROPIC_API_KEY and OPENAI_API_KEY for native mode", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "openai",
+        });
+        expect(config.requiredSecrets).toContain("ANTHROPIC_API_KEY");
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+    });
+
+    describe("1d - Native OpenAI, OPENAI_API_KEY + OPENCODE_DEFAULT_MODEL set", () => {
+      it("sets opencode.json with only $schema (model via env var)", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "openai",
+          opencodeModel: "gpt-4o",
+        });
+        const configFile = config.setupFiles?.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        expect(configFile).toBeDefined();
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+      });
+
+      it("sets OPTIO_OPENCODE_MODEL env var with default model", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "openai",
+          opencodeModel: "gpt-4o",
+        });
+        expect(config.env.OPTIO_OPENCODE_MODEL).toBe("gpt-4o");
+      });
+    });
+
+    describe("1e - Native Groq, only GROQ_API_KEY set", () => {
+      it("sets opencode.json with only $schema (no model, no provider config)", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "groq",
+        });
+        const configFile = config.setupFiles?.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        expect(configFile).toBeDefined();
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+      });
+
+      it("requires ANTHROPIC_API_KEY and OPENAI_API_KEY for native mode", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "groq",
+        });
+        expect(config.requiredSecrets).toContain("ANTHROPIC_API_KEY");
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+    });
+
+    describe("1f - Native Groq, GROQ_API_KEY + OPENCODE_DEFAULT_MODEL set", () => {
+      it("sets opencode.json with only $schema (model via env var)", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "groq",
+          opencodeModel: "llama-3.1-70b",
+        });
+        const configFile = config.setupFiles?.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        expect(configFile).toBeDefined();
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+      });
+
+      it("sets OPTIO_OPENCODE_MODEL env var with default model", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "groq",
+          opencodeModel: "llama-3.1-70b",
+        });
+        expect(config.env.OPTIO_OPENCODE_MODEL).toBe("llama-3.1-70b");
+      });
+    });
+
+    describe("1g - Native Anthropic, multiple provider keys set", () => {
+      it("sets opencode.json with only $schema (no provider config in native mode)", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "anthropic",
+        });
+        const configFile = config.setupFiles?.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        expect(configFile).toBeDefined();
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+        expect(JSON.parse(configFile!.content).provider).toBeUndefined();
+      });
+
+      it("does not inject provider keys into env when no baseUrl (secrets will be injected by orchestrator)", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeProvider: "anthropic",
+        });
+        expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
+        expect(config.env.OPENAI_API_KEY).toBeUndefined();
+        expect(config.env.OPENCODE_MODEL).toBeUndefined();
+        expect(config.env.OPTIO_OPENCODE_MODEL).toBeUndefined();
+      });
+    });
+  });
+
   describe("parseResult", () => {
     it("returns success for exit code 0 with no errors", () => {
       const result = adapter.parseResult(0, "some output\nmore output");

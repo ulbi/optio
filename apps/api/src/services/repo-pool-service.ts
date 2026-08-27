@@ -29,7 +29,7 @@ import {
 } from "./envoy-sidecar.js";
 import { parseIntEnv } from "@optio/shared";
 import { withSpan } from "../telemetry/spans.js";
-import { buildEnvExports } from "../utils/pod-env.js";
+import { buildEnvExports, maskSecrets } from "../utils/pod-env.js";
 
 const IDLE_TIMEOUT_MS = parseIntEnv("OPTIO_REPO_POD_IDLE_MS", 600000); // 10 min default
 const REPO_INIT_TIMEOUT_MS = parseIntEnv("OPTIO_REPO_INIT_TIMEOUT_MS", 120000); // 2 min default
@@ -1080,6 +1080,18 @@ export async function execTaskInRepoPod(
         `[ $AGENT_EXIT -eq 0 ] && touch /home/agent/.optio-env-ready`,
         `exit $AGENT_EXIT`,
       ].join("\n");
+
+      // Debug logging: log masked environment exports for auditability
+      const maskedEnv = maskSecrets(env);
+      const maskedEnvExports = buildEnvExports(maskedEnv);
+      logger.debug({
+        taskId,
+        podName: handle.name,
+        envKeys: Object.keys(env),
+        envExports: maskedEnvExports,
+        scriptLines: script.split("\n").length,
+        scriptPreview: script.length > 2000 ? script.substring(0, 2000) + "...[TRUNCATED]" : script,
+      }, "Exec script prepared for task");
 
       return rt.exec(handle, ["bash", "-c", script], { tty: false });
     },
