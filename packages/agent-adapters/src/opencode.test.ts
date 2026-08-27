@@ -82,12 +82,12 @@ describe("OpenCodeAdapter", () => {
       expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
     });
 
-    it("sets OPTIO_OPENCODE_MODEL when opencodeModel is provided", () => {
+    it("sets OPENCODE_MODEL when opencodeModel is provided", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
         opencodeModel: "anthropic/claude-sonnet-4",
       });
-      expect(config.env.OPTIO_OPENCODE_MODEL).toBe("anthropic/claude-sonnet-4");
+      expect(config.env.OPENCODE_MODEL).toBe("anthropic/claude-sonnet-4");
     });
 
     it("sets OPTIO_OPENCODE_AGENT when opencodeAgent is provided", () => {
@@ -120,7 +120,7 @@ describe("OpenCodeAdapter", () => {
       expect(config.env.OPENAI_API_KEY).toBe("sk-no-key-required");
     });
 
-    it("does not require provider API key secrets when opencodeBaseUrl is set but opencodeLiteLLMModels is not", () => {
+    it("does not require provider API key secrets when opencodeBaseUrl is set but opencodeModeModels is not", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
         opencodeBaseUrl: "http://localhost:8080/v1",
@@ -129,11 +129,11 @@ describe("OpenCodeAdapter", () => {
       expect(config.requiredSecrets).not.toContain("OPENAI_API_KEY");
     });
 
-    it("requires OPENAI_API_KEY when both opencodeBaseUrl and opencodeLiteLLMModels are set", () => {
+    it("requires OPENAI_API_KEY when both opencodeBaseUrl and opencodeModeModels are set", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
         opencodeBaseUrl: "http://localhost:8080/v1",
-        opencodeLiteLLMModels: {
+        opencodeModeModels: {
           code: "qwen-2.5-coder",
         },
       });
@@ -146,11 +146,11 @@ describe("OpenCodeAdapter", () => {
       expect(config.env.OPENAI_BASE_URL).toBeUndefined();
     });
 
-    it("includes opencode config as setup file with LiteLLM Proxy configuration when both opencodeBaseUrl and opencodeLiteLLMModels are provided", () => {
+    it("includes opencode config as setup file with LiteLLM Proxy configuration when both opencodeBaseUrl and opencodeModeModels are provided", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
         opencodeBaseUrl: "http://lightllm-server:8080/v1",
-        opencodeLiteLLMModels: {
+        opencodeModeModels: {
           plan: "plan-model",
           review: "review-model",
           code: "code-model",
@@ -190,7 +190,7 @@ describe("OpenCodeAdapter", () => {
         },
         agent: {
           build: {
-            model: "litellm/code-model",
+            model: "code-model",
             description: "Default implementation agent",
           },
           plan: {
@@ -224,7 +224,7 @@ describe("OpenCodeAdapter", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
         opencodeBaseUrl: "http://lightllm-server:8080/v1",
-        opencodeLiteLLMModels: {
+        opencodeModeModels: {
           code: "code-model",
           chat: "chat-model",
         },
@@ -242,7 +242,7 @@ describe("OpenCodeAdapter", () => {
       });
       expect(parsedConfig.agent).toEqual({
         build: {
-          model: "litellm/code-model",
+          model: "code-model",
           description: "Default implementation agent",
         },
       });
@@ -343,13 +343,13 @@ describe("OpenCodeAdapter", () => {
         });
       });
 
-      it("sets OPTIO_OPENCODE_MODEL env var with default model", () => {
+      it("sets OPENCODE_MODEL env var with default model", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
           opencodeProvider: "anthropic",
           opencodeModel: "claude-sonnet-4",
         });
-        expect(config.env.OPTIO_OPENCODE_MODEL).toBe("claude-sonnet-4");
+        expect(config.env.OPENCODE_MODEL).toBe("claude-sonnet-4");
       });
 
       it("requires ANTHROPIC_API_KEY and OPENAI_API_KEY for native mode", () => {
@@ -404,13 +404,13 @@ describe("OpenCodeAdapter", () => {
         });
       });
 
-      it("sets OPTIO_OPENCODE_MODEL env var with default model", () => {
+      it("sets OPENCODE_MODEL env var with default model", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
           opencodeProvider: "openai",
           opencodeModel: "gpt-4o",
         });
-        expect(config.env.OPTIO_OPENCODE_MODEL).toBe("gpt-4o");
+        expect(config.env.OPENCODE_MODEL).toBe("gpt-4o");
       });
     });
 
@@ -455,13 +455,13 @@ describe("OpenCodeAdapter", () => {
         });
       });
 
-      it("sets OPTIO_OPENCODE_MODEL env var with default model", () => {
+      it("sets OPENCODE_MODEL env var with default model", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
           opencodeProvider: "groq",
           opencodeModel: "llama-3.1-70b",
         });
-        expect(config.env.OPTIO_OPENCODE_MODEL).toBe("llama-3.1-70b");
+        expect(config.env.OPENCODE_MODEL).toBe("llama-3.1-70b");
       });
     });
 
@@ -490,6 +490,212 @@ describe("OpenCodeAdapter", () => {
         expect(config.env.OPENAI_API_KEY).toBeUndefined();
         expect(config.env.OPENCODE_MODEL).toBeUndefined();
         expect(config.env.OPTIO_OPENCODE_MODEL).toBeUndefined();
+      });
+    });
+  });
+
+  describe("State 5: LiteLLM Provider, Default + Detail Models, NO OPENAI_API_KEY Secret", () => {
+    describe("5a - LiteLLM with detail models, no API key", () => {
+      it("sets opencode.json with LiteLLM provider, chat model as top-level model, code model in agent.build", () => {
+        const config = adapter.buildContainerConfig({
+          taskId: "test-123",
+          prompt: "Fix the bug",
+          repoUrl: "https://github.com/org/repo",
+          repoBranch: "main",
+          opencodeProvider: "litellm",
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "fallback-model",
+          opencodeModeModels: {
+            chat: "gpt-4o",
+            code: "qwen-coder",
+          },
+        });
+        const configFile = config.setupFiles?.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        expect(configFile).toBeDefined();
+        const parsedConfig = JSON.parse(configFile!.content);
+        expect(parsedConfig).toEqual({
+          $schema: "https://opencode.ai/config.json",
+          model: "gpt-4o",
+          provider: {
+            litellm: {
+              npm: "@ai-sdk/openai-compatible",
+              name: "LiteLLM Proxy",
+              options: {
+                baseURL: "http://litellm-proxy.agents.svc.cluster.local:4000",
+                apiKey: "{env:OPENAI_API_KEY}",
+              },
+              models: {
+                "gpt-4o": { name: "gpt-4o" },
+                "qwen-coder": { name: "qwen-coder" },
+                "fallback-model": { name: "fallback-model" },
+              },
+            },
+          },
+          agent: {
+            build: {
+              model: "qwen-coder",
+              description: "Default implementation agent",
+            },
+          },
+        });
+      });
+
+      it("sets placeholder OPENAI_API_KEY when no secret is configured", () => {
+        const config = adapter.buildContainerConfig({
+          taskId: "test-123",
+          prompt: "Fix the bug",
+          repoUrl: "https://github.com/org/repo",
+          repoBranch: "main",
+          opencodeProvider: "litellm",
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "fallback-model",
+          opencodeModeModels: {
+            chat: "gpt-4o",
+            code: "qwen-coder",
+          },
+        });
+        expect(config.env.OPENAI_API_KEY).toBe("sk-no-key-required");
+      });
+
+      it("sets OPENAI_BASE_URL when opencodeBaseUrl is provided", () => {
+        const config = adapter.buildContainerConfig({
+          taskId: "test-123",
+          prompt: "Fix the bug",
+          repoUrl: "https://github.com/org/repo",
+          repoBranch: "main",
+          opencodeProvider: "litellm",
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "fallback-model",
+          opencodeModeModels: {
+            chat: "gpt-4o",
+            code: "qwen-coder",
+          },
+        });
+        expect(config.env.OPENAI_BASE_URL).toBe("http://litellm-proxy.agents.svc.cluster.local:4000");
+      });
+
+      it("sets OPENCODE_MODEL to chat model from detail models", () => {
+        const config = adapter.buildContainerConfig({
+          taskId: "test-123",
+          prompt: "Fix the bug",
+          repoUrl: "https://github.com/org/repo",
+          repoBranch: "main",
+          opencodeProvider: "litellm",
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "fallback-model",
+          opencodeModeModels: {
+            chat: "gpt-4o",
+            code: "qwen-coder",
+          },
+        });
+        expect(config.env.OPENCODE_MODEL).toBe("gpt-4o");
+      });
+
+      it("requires OPENAI_API_KEY when both opencodeBaseUrl and opencodeModeModels are set", () => {
+        const config = adapter.buildContainerConfig({
+          taskId: "test-123",
+          prompt: "Fix the bug",
+          repoUrl: "https://github.com/org/repo",
+          repoBranch: "main",
+          opencodeProvider: "litellm",
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "fallback-model",
+          opencodeModeModels: {
+            chat: "gpt-4o",
+            code: "qwen-coder",
+          },
+        });
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+    });
+  });
+
+  describe("State 6: LiteLLM Provider, Default + Detail Models, WITH OPENAI_API_KEY Secret", () => {
+    describe("6a - LiteLLM with detail models, API key present", () => {
+      it("sets opencode.json the same as State 5a", () => {
+        const config = adapter.buildContainerConfig({
+          taskId: "test-123",
+          prompt: "Fix the bug",
+          repoUrl: "https://github.com/org/repo",
+          repoBranch: "main",
+          opencodeProvider: "litellm",
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "fallback-model",
+          opencodeModeModels: {
+            chat: "gpt-4o",
+            code: "qwen-coder",
+          },
+        });
+        const configFile = config.setupFiles?.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        expect(configFile).toBeDefined();
+        const parsedConfig = JSON.parse(configFile!.content);
+        expect(parsedConfig.model).toBe("gpt-4o");
+        expect(parsedConfig.provider.litellm.options.baseURL).toBe(
+          "http://litellm-proxy.agents.svc.cluster.local:4000",
+        );
+        expect(parsedConfig.provider.litellm.options.apiKey).toBe("{env:OPENAI_API_KEY}");
+        expect(parsedConfig.provider.litellm.models).toEqual({
+          "gpt-4o": { name: "gpt-4o" },
+          "qwen-coder": { name: "qwen-coder" },
+          "fallback-model": { name: "fallback-model" },
+        });
+        expect(parsedConfig.agent.build.model).toBe("qwen-coder");
+      });
+
+      it("will have OPENAI_API_KEY injected from secret (secrets injected by orchestrator)", () => {
+        const config = adapter.buildContainerConfig({
+          taskId: "test-123",
+          prompt: "Fix the bug",
+          repoUrl: "https://github.com/org/repo",
+          repoBranch: "main",
+          opencodeProvider: "litellm",
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "fallback-model",
+          opencodeModeModels: {
+            chat: "gpt-4o",
+            code: "qwen-coder",
+          },
+        });
+        expect(config.env.OPENAI_API_KEY).toBe("sk-no-key-required");
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+
+      it("sets OPENAI_BASE_URL when opencodeBaseUrl is provided", () => {
+        const config = adapter.buildContainerConfig({
+          taskId: "test-123",
+          prompt: "Fix the bug",
+          repoUrl: "https://github.com/org/repo",
+          repoBranch: "main",
+          opencodeProvider: "litellm",
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "fallback-model",
+          opencodeModeModels: {
+            chat: "gpt-4o",
+            code: "qwen-coder",
+          },
+        });
+        expect(config.env.OPENAI_BASE_URL).toBe("http://litellm-proxy.agents.svc.cluster.local:4000");
+      });
+
+      it("sets OPENCODE_MODEL to chat model from detail models", () => {
+        const config = adapter.buildContainerConfig({
+          taskId: "test-123",
+          prompt: "Fix the bug",
+          repoUrl: "https://github.com/org/repo",
+          repoBranch: "main",
+          opencodeProvider: "litellm",
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "fallback-model",
+          opencodeModeModels: {
+            chat: "gpt-4o",
+            code: "qwen-coder",
+          },
+        });
+        expect(config.env.OPENCODE_MODEL).toBe("gpt-4o");
       });
     });
   });

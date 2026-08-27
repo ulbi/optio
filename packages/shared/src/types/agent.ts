@@ -28,10 +28,11 @@ export interface AgentTaskInput {
   claudeEffort?: string;
   copilotModel?: string;
   copilotEffort?: string;
+  opencodeProvider?: "anthropic" | "openai" | "groq" | "litellm";
   opencodeModel?: string;
   opencodeAgent?: string;
   opencodeBaseUrl?: string;
-  opencodeLiteLLMModels?: {
+  opencodeModeModels?: {
     plan?: string;
     review?: string;
     code?: string;

@@ -50,7 +50,7 @@ const updateRepoSchema = z
     opencodeAgent: z.string().optional(),
     opencodeProvider: z.string().optional(),
     opencodeBaseUrl: z.string().url().nullable().optional(),
-    opencodeLiteLLMModels: z
+    opencodeModeModels: z
       .object({
         plan: z.string().optional(),
         review: z.string().optional(),

@@ -54,8 +54,8 @@ export class OpenCodeAdapter implements AgentAdapter {
     // When using a custom base URL, provider API keys are optional — the adapter
     // sets a placeholder OPENAI_API_KEY in env that will be overridden if a real
     // secret exists. Without a custom base URL, require standard provider keys.
-    // If opencodeBaseUrl and opencodeLiteLLMModels are both present, require OPENAI_API_KEY.
-    if (input.opencodeBaseUrl && input.opencodeLiteLLMModels) {
+    // If opencodeBaseUrl and opencodeModeModels are both present, require OPENAI_API_KEY.
+    if (input.opencodeBaseUrl && input.opencodeModeModels) {
       requiredSecrets.push("OPENAI_API_KEY");
     } else if (!input.opencodeBaseUrl) {
       requiredSecrets.push("ANTHROPIC_API_KEY", "OPENAI_API_KEY");
@@ -63,14 +63,7 @@ export class OpenCodeAdapter implements AgentAdapter {
 
     const setupFiles: AgentContainerConfig["setupFiles"] = [];
 
-    // Set model if configured (e.g. "anthropic/claude-sonnet-4")
-    if (input.opencodeModel) {
-      env.OPTIO_OPENCODE_MODEL = input.opencodeModel;
-    }
-    // Set named agent if configured (e.g. "build", "plan")
-    if (input.opencodeAgent) {
-      env.OPTIO_OPENCODE_AGENT = input.opencodeAgent;
-    }
+    const isLiteLLM = input.opencodeProvider === "litellm";
 
     // Custom OpenAI-compatible endpoint (e.g. vLLM, lightllm, Ollama)
     if (input.opencodeBaseUrl) {
@@ -80,11 +73,24 @@ export class OpenCodeAdapter implements AgentAdapter {
       env.OPENAI_API_KEY = "sk-no-key-required";
     }
 
-    if (input.opencodeBaseUrl && input.opencodeLiteLLMModels) {
-      const models: Record<string, { name: string }> = {};
-      const { plan, review, code, chat, quick, lint, small } = input.opencodeLiteLLMModels;
+    // Set model if configured (e.g. "anthropic/claude-sonnet-4")
+    // For mode models with a chat model, use it as default instead
+    if (input.opencodeModeModels?.chat) {
+      env.OPENCODE_MODEL = input.opencodeModeModels.chat;
+    } else if (input.opencodeModel) {
+      // All providers use OPENCODE_MODEL env var
+      env.OPENCODE_MODEL = input.opencodeModel;
+    }
+    // Set named agent if configured (e.g. "build", "plan")
+    if (input.opencodeAgent) {
+      env.OPTIO_OPENCODE_AGENT = input.opencodeAgent;
+    }
 
-      const allModelNames = [plan, review, code, chat, quick, lint, small].filter(
+    if (input.opencodeBaseUrl && input.opencodeModeModels) {
+      const models: Record<string, { name: string }> = {};
+      const { plan, review, code, chat, quick, lint, small } = input.opencodeModeModels;
+
+      const allModelNames = [plan, review, code, chat, quick, lint, small, input.opencodeModel].filter(
         (m): m is string => typeof m === "string" && m.trim().length > 0,
       );
 
@@ -118,7 +124,7 @@ export class OpenCodeAdapter implements AgentAdapter {
       config.agent = {};
       if (code) {
         config.agent.build = {
-          model: `litellm/${code}`,
+          model: code,
           description: "Default implementation agent",
         };
       }

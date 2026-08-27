@@ -30,7 +30,7 @@ export interface RepoRecord {
   opencodeAgent: string | null;
   opencodeProvider: string | null;
   opencodeBaseUrl: string | null;
-  opencodeLiteLLMModels: {
+  opencodeModeModels: {
     plan?: string;
     review?: string;
     code?: string;

@@ -270,7 +270,7 @@ export const repos = pgTable(
     opencodeAgent: text("opencode_agent"), // e.g. "build", "plan", null = default
     opencodeProvider: text("opencode_provider"), // "anthropic" | "openai" | ... for default provider inference
     opencodeBaseUrl: text("opencode_base_url"), // Custom OpenAI-compatible endpoint URL (e.g. http://lightllm:8080/v1)
-    opencodeLiteLLMModels: jsonb("opencode_litellm_models").$type<{
+    opencodeModeModels: jsonb("opencode_mode_models").$type<{
       plan?: string;
       review?: string;
       code?: string;
