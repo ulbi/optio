@@ -2,6 +2,22 @@ import type { AgentTaskInput, AgentContainerConfig, AgentResult } from "@optio/s
 import { TASK_BRANCH_PREFIX } from "@optio/shared";
 import type { AgentAdapter } from "./types.js";
 
+interface OpenCodeConfig {
+  $schema: string;
+  model?: string;
+  provider?: {
+    litellm?: {
+      npm: string;
+      name: string;
+      options: {
+        baseURL: string;
+        apiKey: string;
+      };
+      models: Record<string, { name: string }>;
+    };
+  };
+}
+
 /**
  * OpenCode CLI (opencode run --format json) outputs NDJSON events.
  * Each line is a JSON object. The exact schema is not fully documented,
@@ -54,15 +70,51 @@ export class OpenCodeAdapter implements AgentAdapter {
     // When using a custom base URL, provider API keys are optional — the adapter
     // sets a placeholder OPENAI_API_KEY in env that will be overridden if a real
     // secret exists. Without a custom base URL, require standard provider keys.
-    if (!input.opencodeBaseUrl) {
-      requiredSecrets.push("ANTHROPIC_API_KEY", "OPENAI_API_KEY");
-    }
+    const isLitellm = input.opencodeProvider === "litellm";
+
+    const config: OpenCodeConfig = {
+      $schema: "https://opencode.ai/config.json",
+    };
 
     const setupFiles: AgentContainerConfig["setupFiles"] = [];
 
-    // Set model if configured (e.g. "anthropic/claude-sonnet-4")
+    if (isLitellm) {
+      requiredSecrets.push("OPENAI_API_KEY");
+      env.OPENAI_API_KEY = "sk-no-key-required";
+      if (input.opencodeBaseUrl) {
+        const effectiveModel = input.opencodeModel ?? input.opencodeDefaultModel;
+        if (effectiveModel) {
+          config.model = effectiveModel;
+          env.OPENCODE_MODEL = effectiveModel;
+        }
+        config.provider = {
+          litellm: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "LiteLLM Proxy",
+            options: {
+              baseURL: input.opencodeBaseUrl,
+              apiKey: "{env:OPENAI_API_KEY}",
+            },
+            models: effectiveModel
+              ? {
+                  [effectiveModel]: {
+                    name: effectiveModel,
+                  },
+                }
+              : {},
+          },
+        };
+      }
+    } else if (!input.opencodeBaseUrl) {
+      requiredSecrets.push("ANTHROPIC_API_KEY", "OPENAI_API_KEY");
+    }
+
+    // opencodeModel (repo-specific) always wins over opencodeDefaultModel (global secret)
     if (input.opencodeModel) {
+      env.OPENCODE_MODEL = input.opencodeModel;
       env.OPTIO_OPENCODE_MODEL = input.opencodeModel;
+    } else if (input.opencodeDefaultModel) {
+      env.OPENCODE_MODEL = input.opencodeDefaultModel;
     }
     // Set named agent if configured (e.g. "build", "plan")
     if (input.opencodeAgent) {
@@ -70,7 +122,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     }
 
     // Custom OpenAI-compatible endpoint (e.g. vLLM, lightllm, Ollama)
-    if (input.opencodeBaseUrl) {
+    if (input.opencodeBaseUrl && !isLitellm) {
       env.OPENAI_BASE_URL = input.opencodeBaseUrl;
       // Local endpoints typically don't require a real API key — set a
       // placeholder that gets overridden if a real secret is configured.
@@ -80,7 +132,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     // Pre-seed a minimal opencode config so the CLI doesn't hit first-run setup
     setupFiles.push({
       path: "/home/agent/.config/opencode/opencode.json",
-      content: JSON.stringify({ $schema: "https://opencode.ai/config.json" }),
+      content: JSON.stringify(config),
     });
 
     // Write the task file into the worktree
