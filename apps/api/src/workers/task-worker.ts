@@ -64,6 +64,38 @@ import { getBullMQConnectionOptions } from "../services/redis-config.js";
 
 const connectionOpts = getBullMQConnectionOptions();
 
+const SECRET_PATTERNS = [
+  /(api[_-]?key|secret|token|password|auth)[_-]?/i,
+  /(anthropic|openai|groq|gemini|github|gitlab|codecommit)[_-]?/i,
+  /(claude[_-]?code)[_-]?/i,
+  /(oauth|bearer)[_-]?/i,
+] as const;
+
+export function maskSecretsInCommand(cmd: string): string {
+  let masked = cmd;
+  for (const pattern of SECRET_PATTERNS) {
+    masked = masked.replace(
+      new RegExp(`(--?\\w*${pattern.source}\\w*\\s+)('?[^'\\s]+'?)`, "gi"),
+      "$1***MASKED***",
+    );
+    masked = masked.replace(
+      new RegExp(`(\\b${pattern.source}\\w*[=:]\s*)('?[^'\\s]+'?)`, "gi"),
+      "$1***MASKED***",
+    );
+  }
+  masked = masked.replace(
+    /\b(API[_-]?KEY|SECRET|TOKEN|PASSWORD|AUTH|OAUTH|BEARER)[_A-Z0-9]*\s*=\s*('[^']+'|"[^"]+"|[^\\s]+)/gi,
+    "$1=***MASKED***",
+  );
+  return masked;
+}
+
+export function logAgentCommand(taskId: string, agentType: string, agentCommand: string[]): void {
+  const fullCmd = agentCommand.join(" && ");
+  const maskedCmd = maskSecretsInCommand(fullCmd);
+  logger.info({ taskId, agentType, command: maskedCmd }, "Executing agent command");
+}
+
 export const taskQueue = new Queue("tasks", { connection: connectionOpts });
 
 /**
@@ -823,6 +855,7 @@ export function startTaskWorker() {
           maxTurnsCoding: repoConfig?.maxTurnsCoding ?? undefined,
           maxTurnsReview: repoConfig?.maxTurnsReview ?? undefined,
         });
+        logAgentCommand(task.id, task.agentType, agentCommand);
 
         // Execute the task in the repo pod via worktree
         // On retry to the same pod, reset existing worktree instead of recreating

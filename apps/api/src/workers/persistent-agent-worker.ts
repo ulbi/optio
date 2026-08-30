@@ -39,6 +39,7 @@ import { parseCursorEvent } from "../services/cursor-event-parser.js";
 import { enqueueReconcile } from "../services/reconcile-queue.js";
 import { getBullMQConnectionOptions } from "../services/redis-config.js";
 import { logger } from "../logger.js";
+import { logAgentCommand } from "./task-worker.js";
 import { instrumentWorkerProcessor } from "../telemetry/instrument-worker.js";
 
 const connectionOpts = getBullMQConnectionOptions();
@@ -370,6 +371,7 @@ export function startPersistentAgentWorker() {
           env,
           claimedAgent.maxTurns,
         );
+        logAgentCommand(turn.id, claimedAgent.agentRuntime, agentCommand);
 
         const execSession = await paPool.execTurnInPod(pod, turn.id, agentCommand, env);
 
