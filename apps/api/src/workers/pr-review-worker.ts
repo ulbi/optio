@@ -56,6 +56,7 @@ import {
   buildAgentCommand,
   buildInitialClaudeStreamMessage,
   inferExitCode,
+  logAgentCommand,
 } from "./task-worker.js";
 
 const connectionOpts = getBullMQConnectionOptions();
@@ -546,6 +547,7 @@ export function startPrReviewWorker() {
           isReview: true,
           maxTurnsReview: repoConfig.maxTurnsReview ?? undefined,
         });
+        logAgentCommand(run.id, agentType, agentCommand);
 
         const execSession = await repoPool.execTaskInRepoPod(pod, run.id, agentCommand, allEnv);
 
