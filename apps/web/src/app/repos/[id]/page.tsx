@@ -77,6 +77,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
   const [geminiApprovalMode, setGeminiApprovalMode] = useState("yolo");
   const [opencodeModel, setOpencodeModel] = useState("");
   const [opencodeAgent, setOpencodeAgent] = useState("");
+  const [opencodeProvider, setOpencodeProvider] = useState("anthropic");
   const [opencodeBaseUrl, setOpencodeBaseUrl] = useState("");
   const [openclawModel, setOpenclawModel] = useState("");
   const [cursorModel, setCursorModel] = useState("");
@@ -178,6 +179,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
         setGeminiApprovalMode(r.geminiApprovalMode ?? "yolo");
         setOpencodeModel(r.opencodeModel ?? "");
         setOpencodeAgent(r.opencodeAgent ?? "");
+        setOpencodeProvider(r.opencodeProvider ?? "anthropic");
         setOpencodeBaseUrl(r.opencodeBaseUrl ?? "");
         setOpenclawModel(r.openclawModel ?? "");
         setCursorModel(r.cursorModel ?? "");
@@ -271,6 +273,7 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
         geminiApprovalMode: geminiApprovalMode || undefined,
         opencodeModel: opencodeModel || undefined,
         opencodeAgent: opencodeAgent || undefined,
+        opencodeProvider: opencodeProvider || undefined,
         opencodeBaseUrl: opencodeBaseUrl || null,
         openclawModel: openclawModel || undefined,
         cursorModel: cursorModel || undefined,
