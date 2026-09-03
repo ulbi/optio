@@ -325,6 +325,7 @@ export function startPrReviewWorker() {
           copilotEffort: repoConfig.copilotEffort ?? undefined,
           opencodeModel,
           opencodeAgent: repoConfig.opencodeAgent ?? undefined,
+          opencodeProvider: repoConfig.opencodeProvider ?? undefined,
           opencodeBaseUrl: repoConfig.opencodeBaseUrl ?? opencodeDefaultBaseUrl,
           cursorModel,
           geminiAuthMode,
