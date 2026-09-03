@@ -1175,10 +1175,11 @@ export default function RepoDetailPage({ params }: { params: Promise<{ id: strin
             </p>
             <AgentOptionsPicker
               provider="opencode"
-              values={{ opencodeModel, opencodeAgent, opencodeBaseUrl }}
+              values={{ opencodeModel, opencodeAgent, opencodeProvider, opencodeBaseUrl }}
               onChange={(v: AgentOptionsValues) => {
                 if (typeof v.opencodeModel === "string") setOpencodeModel(v.opencodeModel);
                 if (typeof v.opencodeAgent === "string") setOpencodeAgent(v.opencodeAgent);
+                if (typeof v.opencodeProvider === "string") setOpencodeProvider(v.opencodeProvider);
                 if (typeof v.opencodeBaseUrl === "string") setOpencodeBaseUrl(v.opencodeBaseUrl);
               }}
             />
