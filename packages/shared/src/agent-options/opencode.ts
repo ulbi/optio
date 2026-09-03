@@ -18,17 +18,10 @@ export const OPENCODE_CATALOG: ProviderCatalog = {
     {
       key: "opencodeProvider",
       label: "Provider",
-      kind: "select",
-      choices: [
-        { value: "anthropic", label: "Anthropic (Claude)" },
-        { value: "openai", label: "OpenAI" },
-        { value: "groq", label: "Groq" },
-        { value: "litellm", label: "LiteLLM" },
-        { value: "custom", label: "Custom / Other" },
-      ],
-      default: "anthropic",
+      kind: "text",
+      placeholder: "anthropic",
       helpText:
-        "Select the upstream provider. 'litellm' enables LiteLLM proxy mode via Custom Base URL. 'custom' allows free-text entry for other providers.",
+        "Enter the upstream provider: anthropic, openai, groq, litellm, or custom (for self-hosted). 'litellm' enables LiteLLM proxy mode via Custom Base URL.",
     },
     {
       key: "opencodeAgent",

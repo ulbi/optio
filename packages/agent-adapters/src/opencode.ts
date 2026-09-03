@@ -52,6 +52,13 @@ export class OpenCodeAdapter implements AgentAdapter {
   }
 
   buildContainerConfig(input: AgentTaskInput): AgentContainerConfig {
+    console.log(`[opencode] Configuration:`, {
+      provider: input.opencodeProvider,
+      model: input.opencodeModel,
+      agent: input.opencodeAgent,
+      baseUrl: input.opencodeBaseUrl,
+    });
+
     const prompt = input.renderedPrompt ?? input.prompt;
 
     const env: Record<string, string> = {
@@ -71,6 +78,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     // sets a placeholder OPENAI_API_KEY in env that will be overridden if a real
     // secret exists. Without a custom base URL, require standard provider keys.
     const isLitellm = input.opencodeProvider === "litellm";
+    console.log(`[opencode] isLitellm:`, isLitellm);
 
     const config: OpenCodeConfig = {
       $schema: "https://opencode.ai/config.json",
