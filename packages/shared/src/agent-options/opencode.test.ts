@@ -2,24 +2,21 @@ import { describe, it, expect } from "vitest";
 import { OPENCODE_CATALOG } from "./opencode.js";
 
 describe("OPENCODE_CATALOG", () => {
-  it("includes opencodeProvider option with correct choices", () => {
+  it("includes opencodeProvider option as free-text field", () => {
     const providerOption = OPENCODE_CATALOG.options.find((o) => o.key === "opencodeProvider");
     expect(providerOption).toBeDefined();
-    expect(providerOption?.kind).toBe("select");
-    expect(providerOption?.choices).toBeDefined();
-    expect(providerOption?.choices).toHaveLength(5);
-
-    const choiceValues = providerOption?.choices?.map((c) => c.value);
-    expect(choiceValues).toContain("anthropic");
-    expect(choiceValues).toContain("openai");
-    expect(choiceValues).toContain("groq");
-    expect(choiceValues).toContain("litellm");
-    expect(choiceValues).toContain("custom");
+    expect(providerOption?.kind).toBe("text");
+    expect(providerOption?.placeholder).toBe("anthropic");
+    expect(providerOption?.helpText).toContain("litellm");
   });
 
-  it("sets default provider to anthropic", () => {
+  it("accepts common provider values in opencodeProvider helpText", () => {
     const providerOption = OPENCODE_CATALOG.options.find((o) => o.key === "opencodeProvider");
-    expect(providerOption?.default).toBe("anthropic");
+    expect(providerOption?.helpText).toContain("anthropic");
+    expect(providerOption?.helpText).toContain("openai");
+    expect(providerOption?.helpText).toContain("groq");
+    expect(providerOption?.helpText).toContain("litellm");
+    expect(providerOption?.helpText).toContain("custom");
   });
 
   it("includes opencodeAgent and opencodeBaseUrl options unchanged", () => {
