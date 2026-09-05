@@ -1069,6 +1069,10 @@ export async function execTaskInRepoPod(
         // (API pod died), sends SIGTERM to the main script which triggers the EXIT trap.
         `(trap '' PIPE; while sleep 30; do printf '\\n' 2>/dev/null || { kill -TERM $_optio_main_pid 2>/dev/null; exit; }; done) &`,
         `set +e`,
+        // Tee agent output (stdout+stderr) into a log file in the worktree so
+        // the full transcript survives pod restarts / worktree reuse — in
+        // addition to the live stdout/stderr stream captured by the API.
+        `exec > >(tee -a /workspace/tasks/${taskId}/.optio-agent.log) 2>&1`,
         ...agentCommand,
         `AGENT_EXIT=$?`,
         `[ $AGENT_EXIT -eq 0 ] && touch /home/agent/.optio-env-ready`,

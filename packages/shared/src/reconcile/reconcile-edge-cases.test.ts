@@ -92,6 +92,7 @@ function repoSnapshot(
       maxAutoResumes: 10,
       recentAutoResumeCount: 0,
     },
+    recentLogs: [],
     readErrors: [],
     ...extras,
   };
@@ -154,6 +155,7 @@ function standaloneSnapshot(
       maxAutoResumes: 10,
       recentAutoResumeCount: 0,
     },
+    recentLogs: [],
     readErrors: [],
     ...extras,
   };

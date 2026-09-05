@@ -1,0 +1,44 @@
+# ---- Dependencies stage ----
+FROM node:24-slim AS deps
+
+RUN corepack enable && corepack prepare pnpm@10 --activate
+
+WORKDIR /app
+
+# Copy workspace config
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+
+# Copy package.json for ALL workspace packages (pnpm needs full workspace graph)
+COPY apps/api/package.json apps/api/tsconfig.json apps/api/drizzle.config.ts apps/api/
+COPY apps/cli/package.json apps/cli/
+COPY apps/web/package.json apps/web/
+COPY apps/site/package.json apps/site/
+COPY packages/shared/package.json packages/shared/tsconfig.json packages/shared/
+COPY packages/container-runtime/package.json packages/container-runtime/tsconfig.json packages/container-runtime/
+COPY packages/agent-adapters/package.json packages/agent-adapters/tsconfig.json packages/agent-adapters/
+COPY packages/ticket-providers/package.json packages/ticket-providers/tsconfig.json packages/ticket-providers/
+
+# Install production dependencies (--ignore-scripts avoids husky prepare hook)
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+# ---- Test runner stage ----
+FROM node:24-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install tsx globally for TypeScript execution at runtime
+RUN npm install -g tsx
+
+WORKDIR /app
+
+# Copy production dependencies from deps stage
+COPY --from=deps /app/ ./
+
+# Copy source
+COPY packages/ packages/
+COPY apps/api/ apps/api/
+
+WORKDIR /app/apps/api
+CMD ["tsx", "src/index.ts"]

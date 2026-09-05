@@ -238,6 +238,28 @@ describe("parseOpenCodeEvent", () => {
     expect(result.entries).toHaveLength(0);
   });
 
+  it("logs non-JSON raw text as text type (not skipped)", () => {
+    const result = parseOpenCodeEvent("plain text output from opencode", TASK_ID);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].type).toBe("text");
+    expect(result.entries[0].content).toBe("plain text output from opencode");
+  });
+
+  it("logs short non-empty raw text lines (not silently skipped)", () => {
+    const result = parseOpenCodeEvent("ok", TASK_ID);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].type).toBe("text");
+    expect(result.entries[0].content).toBe("ok");
+  });
+
+  it("logs unknown JSON event types as text instead of silently skipping", () => {
+    const line = JSON.stringify({ type: "unknown_event_type", data: "some data" });
+    const result = parseOpenCodeEvent(line, TASK_ID);
+    expect(result.entries.length).toBeGreaterThanOrEqual(1);
+    expect(result.entries[0].type).toBe("text");
+    expect(result.entries[0].content).toContain("unknown_event_type");
+  });
+
   describe("NDJSON fixture", () => {
     it("parses all fixture lines without throwing", () => {
       for (const line of fixtureLines) {

@@ -298,13 +298,21 @@ function decideRunning(snapshot: WorldSnapshot): RepoAction {
 
   // Stall detection.
   if (snapshot.heartbeat.isStale) {
+    const silentSecs = Math.round(snapshot.heartbeat.silentForMs / 1000);
+    const recent = snapshot.recentLogs ?? [];
+    let message = `Agent stalled: no activity for ${silentSecs}s`;
+    if (recent.length > 0) {
+      const lines = recent.map((l, i) => `  ${i + 1}. ${l.content}`).join("\n");
+      message += `\nLast ${recent.length} log entr${recent.length === 1 ? "y" : "ies"}:\n${lines}`;
+    } else {
+      message +=
+        "\nNo recent agent log entries were captured. The agent process may have failed to start, produced no output, or died silently — check `.optio-agent.log` in the task worktree.";
+    }
     return {
       kind: "transition",
       to: TaskState.FAILED,
       statusPatch: {
-        errorMessage: `Agent stalled: no activity for ${Math.round(
-          snapshot.heartbeat.silentForMs / 1000,
-        )}s`,
+        errorMessage: message,
       },
       trigger: "stall_detected",
       reason: "heartbeat_stale",

@@ -17,7 +17,6 @@ import { logger } from "../logger.js";
 import { ClaudeCodeAdapter } from "@optio/agent-adapters";
 
 describe("buildAgentCommand", () => {
-
   describe("opencode agent", () => {
     it("logs the full command line with secrets masked", () => {
       const env = {
@@ -38,7 +37,8 @@ describe("buildAgentCommand", () => {
     });
 
     it("masks API keys when present in command strings", () => {
-      const cmd = "opencode run --format json 'Test' && export ANTHROPIC_API_KEY=secret-anthropic-key";
+      const cmd =
+        "opencode run --format json 'Test' && export ANTHROPIC_API_KEY=secret-anthropic-key";
       const masked = maskSecretsInCommand(cmd);
       expect(masked).not.toContain("secret-anthropic-key");
     });
@@ -56,12 +56,15 @@ describe("buildAgentCommand", () => {
     });
 
     it("logs the command line with task ID and agent type prefix", () => {
-      const agentCommand = ['echo "[optio] Running opencode..."', "opencode run --format json 'Test task'"];
+      const agentCommand = [
+        'echo "[optio] Running opencode..."',
+        "opencode run --format json 'Test task'",
+      ];
       logAgentCommand("task-123", "opencode", agentCommand);
       expect(loggerInfoSpy).toHaveBeenCalledTimes(1);
       expect(loggerInfoSpy).toHaveBeenCalledWith(
         expect.objectContaining({ taskId: "task-123", agentType: "opencode" }),
-        "Executing agent command"
+        "Executing agent command",
       );
     });
 
@@ -75,25 +78,22 @@ describe("buildAgentCommand", () => {
         expect.objectContaining({
           command: expect.stringContaining("claude --print --model 'opus'"),
         }),
-        "Executing agent command"
+        "Executing agent command",
       );
     });
 
     it("masks secrets in the logged command", () => {
-      const agentCommand = [
-        "opencode run --format json export ANTHROPIC_API_KEY=secret-key-123",
-      ];
+      const agentCommand = ["opencode run --format json export ANTHROPIC_API_KEY=secret-key-123"];
       logAgentCommand("task-789", "opencode", agentCommand);
       expect(loggerInfoSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           command: expect.not.stringContaining("secret-key-123"),
         }),
-        "Executing agent command"
+        "Executing agent command",
       );
     });
   });
 
-  
   describe("claude-code agent", () => {
     it("produces a basic claude command that runs in --print mode", () => {
       const env = { OPTIO_PROMPT: "Fix the bug" };
@@ -776,5 +776,119 @@ describe("classifyRunOutcome", () => {
       detectedPrUrl: undefined,
     });
     expect(outcome).toBe("failure");
+  });
+});
+
+describe("OPTIO_LOG_SECRETS environment variable", () => {
+  const originalEnv = process.env.OPTIO_LOG_SECRETS;
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env.OPTIO_LOG_SECRETS;
+    } else {
+      process.env.OPTIO_LOG_SECRETS = originalEnv;
+    }
+  });
+
+  it("returns unmasked command when OPTIO_LOG_SECRETS=true", () => {
+    process.env.OPTIO_LOG_SECRETS = "true";
+    const cmd = "opencode run --format json && export ANTHROPIC_API_KEY=sk-secret-123";
+    const masked = maskSecretsInCommand(cmd);
+    expect(masked).toContain("sk-secret-123");
+  });
+
+  it("returns masked command when OPTIO_LOG_SECRETS=false", () => {
+    process.env.OPTIO_LOG_SECRETS = "false";
+    const cmd = "opencode run --format json && export ANTHROPIC_API_KEY=sk-secret-123";
+    const masked = maskSecretsInCommand(cmd);
+    expect(masked).not.toContain("sk-secret-123");
+    expect(masked).toContain("***MASKED***");
+  });
+
+  it("returns masked command when OPTIO_LOG_SECRETS is unset", () => {
+    delete process.env.OPTIO_LOG_SECRETS;
+    const cmd = "opencode run --format json && export ANTHROPIC_API_KEY=sk-secret-123";
+    const masked = maskSecretsInCommand(cmd);
+    expect(masked).not.toContain("sk-secret-123");
+    expect(masked).toContain("***MASKED***");
+  });
+
+  it("logAgentCommand logs unmasked command when OPTIO_LOG_SECRETS=true", () => {
+    process.env.OPTIO_LOG_SECRETS = "true";
+    const loggerInfoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const agentCommand = ["opencode run --format json export ANTHROPIC_API_KEY=sk-secret-123"];
+    logAgentCommand("task-123", "opencode", agentCommand);
+    expect(loggerInfoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: expect.stringContaining("sk-secret-123"),
+      }),
+      "Executing agent command",
+    );
+    loggerInfoSpy.mockRestore();
+  });
+
+  it("logAgentCommand logs masked command when OPTIO_LOG_SECRETS=false", () => {
+    process.env.OPTIO_LOG_SECRETS = "false";
+    const loggerInfoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const agentCommand = ["opencode run --format json export ANTHROPIC_API_KEY=sk-secret-123"];
+    logAgentCommand("task-123", "opencode", agentCommand);
+    expect(loggerInfoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: expect.stringMatching(/MASKED/),
+      }),
+      "Executing agent command",
+    );
+    // And the secret value itself must never appear when masking is on.
+    expect(loggerInfoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: expect.not.stringContaining("sk-secret-123"),
+      }),
+      "Executing agent command",
+    );
+    loggerInfoSpy.mockRestore();
+  });
+});
+
+describe("logSecretsSummary", () => {
+  let loggerInfoSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    loggerInfoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    loggerInfoSpy.mockRestore();
+  });
+
+  it("logs secrets summary with envVars, requiredSecrets, and connections", async () => {
+    const { logSecretsSummary } = await import("./task-worker.js");
+    const env = {
+      ANTHROPIC_API_KEY: "sk-ant-123",
+      OPENAI_API_KEY: "sk-oai-456",
+      GITHUB_TOKEN: "ghp-789",
+    };
+    const requiredSecrets = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"];
+    const connections = [{ name: "github", mappedSecrets: ["GITHUB_TOKEN"] }];
+
+    await logSecretsSummary("task-123", "opencode", env, requiredSecrets, connections);
+
+    expect(loggerInfoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "task-123",
+        agentType: "opencode",
+        secrets: expect.objectContaining({
+          envVars: expect.arrayContaining([
+            expect.stringContaining("ANTHROPIC_API_KEY"),
+            expect.stringContaining("OPENAI_API_KEY"),
+            expect.stringContaining("GITHUB_TOKEN"),
+          ]),
+          requiredSecrets: expect.arrayContaining(["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]),
+          connections: expect.arrayContaining([
+            expect.objectContaining({ name: "github", mappedSecrets: ["GITHUB_TOKEN"] }),
+          ]),
+        }),
+      }),
+      "Secrets summary for task",
+    );
   });
 });

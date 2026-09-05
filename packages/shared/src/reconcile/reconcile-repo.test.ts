@@ -114,6 +114,7 @@ function snapshot(
       maxAutoResumes: 10,
       recentAutoResumeCount: 0,
     },
+    recentLogs: [],
     readErrors: [],
     ...extras,
   };
@@ -482,6 +483,42 @@ describe("reconcileRepo — RUNNING", () => {
     if (action.kind === "transition") {
       expect(action.to).toBe(TaskState.FAILED);
       expect(action.trigger).toBe("stall_detected");
+    }
+  });
+
+  it("stall detected includes last 5 log entries in errorMessage", () => {
+    const s = snapshot(
+      {},
+      { state: TaskState.RUNNING },
+      {
+        heartbeat: {
+          lastActivityAt: new Date(NOW.getTime() - 600_000),
+          isStale: true,
+          silentForMs: 600_000,
+        },
+        // This will be added by the implementation: recent logs from taskLogs table
+        recentLogs: [
+          { content: "tool_use: Edit src/main.ts", timestamp: new Date(NOW.getTime() - 300_000) },
+          { content: "tool_result: File edited", timestamp: new Date(NOW.getTime() - 280_000) },
+          { content: "text: Running tests...", timestamp: new Date(NOW.getTime() - 260_000) },
+          { content: "tool_use: bash npm test", timestamp: new Date(NOW.getTime() - 240_000) },
+          { content: "tool_result: Tests passed", timestamp: new Date(NOW.getTime() - 220_000) },
+        ],
+      },
+    );
+    const action = reconcileRepo(s);
+    expect(action.kind).toBe("transition");
+    if (action.kind === "transition") {
+      expect(action.to).toBe(TaskState.FAILED);
+      expect(action.trigger).toBe("stall_detected");
+      expect(action.statusPatch?.errorMessage).toContain("Agent stalled: no activity for 600s");
+      // Should include last 5 log entries
+      expect(action.statusPatch?.errorMessage).toContain("Last 5 log entries:");
+      expect(action.statusPatch?.errorMessage).toContain("tool_use: Edit src/main.ts");
+      expect(action.statusPatch?.errorMessage).toContain("tool_result: File edited");
+      expect(action.statusPatch?.errorMessage).toContain("text: Running tests...");
+      expect(action.statusPatch?.errorMessage).toContain("tool_use: bash npm test");
+      expect(action.statusPatch?.errorMessage).toContain("tool_result: Tests passed");
     }
   });
 

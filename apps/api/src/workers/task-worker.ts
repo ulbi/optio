@@ -71,7 +71,16 @@ const SECRET_PATTERNS = [
   /(oauth|bearer)[_-]?/i,
 ] as const;
 
+/** Secret-bearing env var names, for the secrets summary. */
+const SECRET_NAME_PATTERN = /(api[_-]?key|secret|token|password|auth|oauth|bearer)/i;
+
+/** True when secret VALUES should be logged in the command / env summary. */
+export function logSecretsEnabled(): boolean {
+  return process.env.OPTIO_LOG_SECRETS === "true";
+}
+
 export function maskSecretsInCommand(cmd: string): string {
+  if (logSecretsEnabled()) return cmd;
   let masked = cmd;
   for (const pattern of SECRET_PATTERNS) {
     masked = masked.replace(
@@ -84,7 +93,7 @@ export function maskSecretsInCommand(cmd: string): string {
     );
   }
   masked = masked.replace(
-    /\b(API[_-]?KEY|SECRET|TOKEN|PASSWORD|AUTH|OAUTH|BEARER)[_A-Z0-9]*\s*=\s*('[^']+'|"[^"]+"|[^\\s]+)/gi,
+    /\b(API[_-]?KEY|SECRET|TOKEN|PASSWORD|AUTH|OAUTH|BEARER)[_A-Z0-9]*\s*=\s*('[^']+'|"[^"]+"|[^\s]+)/gi,
     "$1=***MASKED***",
   );
   return masked;
@@ -92,8 +101,49 @@ export function maskSecretsInCommand(cmd: string): string {
 
 export function logAgentCommand(taskId: string, agentType: string, agentCommand: string[]): void {
   const fullCmd = agentCommand.join(" && ");
-  const maskedCmd = maskSecretsInCommand(fullCmd);
-  logger.info({ taskId, agentType, command: maskedCmd }, "Executing agent command");
+  const loggedCmd = logSecretsEnabled() ? fullCmd : maskSecretsInCommand(fullCmd);
+  logger.info({ taskId, agentType, command: loggedCmd }, "Executing agent command");
+}
+
+/**
+ * Log a summary of every secret that was passed to the agent — either via an
+ * env var or via requiredSecrets / connection-mapped secrets. When
+ * OPTIO_LOG_SECRETS=true the values are included; otherwise they are masked.
+ */
+export async function logSecretsSummary(
+  taskId: string,
+  agentType: string,
+  env: Record<string, string>,
+  requiredSecrets: string[] = [],
+  connections: Array<{ name: string; mappedSecrets?: string[] }> = [],
+): Promise<void> {
+  const includeValues = logSecretsEnabled();
+
+  const redact = (value: unknown) => (includeValues ? String(value) : "***MASKED***");
+
+  const envVars = Object.entries(env)
+    .filter(([key]) => SECRET_NAME_PATTERN.test(key))
+    .map(([key, value]) => (value ? `${key}=${redact(value)}` : key));
+
+  const required = [...new Set(requiredSecrets)];
+  const connectionSummary = connections.map((c) => ({
+    name: c.name,
+    mappedSecrets: c.mappedSecrets ?? [],
+  }));
+
+  logger.info(
+    {
+      taskId,
+      agentType,
+      secrets: {
+        envVars,
+        requiredSecrets: required,
+        connections: connectionSummary,
+        valuesExposed: includeValues,
+      },
+    },
+    "Secrets summary for task",
+  );
 }
 
 export const taskQueue = new Queue("tasks", { connection: connectionOpts });
@@ -857,6 +907,16 @@ export function startTaskWorker() {
           maxTurnsReview: repoConfig?.maxTurnsReview ?? undefined,
         });
         logAgentCommand(task.id, task.agentType, agentCommand);
+        await logSecretsSummary(
+          task.id,
+          task.agentType,
+          allEnv,
+          agentConfig.requiredSecrets ?? [],
+          resolvedConnections.map((c) => ({
+            name: c.connectionName,
+            mappedSecrets: Object.keys(c.config),
+          })),
+        );
 
         // Execute the task in the repo pod via worktree
         // On retry to the same pod, reset existing worktree instead of recreating

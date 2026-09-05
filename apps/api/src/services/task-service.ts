@@ -718,11 +718,12 @@ export function getStallThresholdForRepo(
 }
 
 /**
- * Get the last meaningful log entry summary for a stalled task.
- * Returns a short string like "Bash $ npm test" or "Read file.ts".
+ * Get the last up-to-5 meaningful log entry summaries for a stalled task.
+ * Returns a multi-line string like "Bash $ npm test\nRead file.ts\n...", newest
+ * last, or undefined when there are no logs.
  */
 export async function getLastLogSummary(taskId: string): Promise<string | undefined> {
-  const [log] = await db
+  const logs = await db
     .select({ content: taskLogs.content, logType: taskLogs.logType })
     .from(taskLogs)
     .where(
@@ -732,12 +733,15 @@ export async function getLastLogSummary(taskId: string): Promise<string | undefi
       ),
     )
     .orderBy(desc(taskLogs.timestamp))
-    .limit(1);
+    .limit(5);
 
-  if (!log) return undefined;
-  // Truncate to a reasonable summary length
-  const summary = log.content.trim().slice(0, 120);
-  return summary || undefined;
+  if (logs.length === 0) return undefined;
+  const trimmed = logs
+    .map((l) => String(l.content).trim())
+    .filter(Boolean)
+    .reverse(); // ascending chronological order (oldest → newest)
+  if (trimmed.length === 0) return undefined;
+  return trimmed.map((s) => s.slice(0, 160)).join("\n");
 }
 
 /**

@@ -410,6 +410,7 @@ export async function execRunInPod(
     `cd /workspace/runs/${runId}`,
     `export OPTIO_WORKFLOW_RUN_ID="${runId}"`,
     `set +e`,
+    `exec > >(tee -a /workspace/runs/${runId}/.optio-agent.log) 2>&1`,
     ...agentCommand,
     `AGENT_EXIT=$?`,
     `exit $AGENT_EXIT`,

@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   tasks,
+  taskLogs,
   workflowRuns,
   workflows,
   repoPods,
@@ -88,6 +89,7 @@ async function buildRepoSnapshot(ref: RunRef): Promise<WorldSnapshot | null> {
     podResult,
     repoConfig,
     recentAutoResumeCount,
+    recentLogs,
   ] = await Promise.all([
     loadDependencies(ref.id).catch((err) => {
       readErrors.push({ source: "deps", message: String(err) });
@@ -124,6 +126,10 @@ async function buildRepoSnapshot(ref: RunRef): Promise<WorldSnapshot | null> {
       return null;
     }),
     countRecentAutoResumes(ref.id).catch(() => 0),
+    loadRecentRepoLogs(ref.id).catch((err) => {
+      readErrors.push({ source: "logs", message: String(err) });
+      return [] as WorldSnapshot["recentLogs"];
+    }),
   ]);
 
   const stallThresholdMs = parseIntEnv("OPTIO_STALL_THRESHOLD_MS", DEFAULT_STALL_THRESHOLD_MS);
@@ -167,6 +173,7 @@ async function buildRepoSnapshot(ref: RunRef): Promise<WorldSnapshot | null> {
       maxAutoResumes: repoConfig?.maxAutoResumes ?? parseIntEnv("OPTIO_MAX_AUTO_RESUMES", 10),
       recentAutoResumeCount,
     },
+    recentLogs,
     readErrors,
   };
 
@@ -193,6 +200,25 @@ async function countRecentAutoResumes(taskId: string): Promise<number> {
         )`,
     );
   return Number(count);
+}
+
+/**
+ * Load the last up-to-5 meaningful log lines for a repo task, newest last.
+ * Used for stall diagnostics in decideRunning.
+ */
+async function loadRecentRepoLogs(taskId: string): Promise<WorldSnapshot["recentLogs"]> {
+  const rows = await db
+    .select({ content: taskLogs.content, timestamp: taskLogs.timestamp })
+    .from(taskLogs)
+    .where(
+      and(
+        eq(taskLogs.taskId, taskId),
+        sql`${taskLogs.logType} IN ('tool_use', 'text', 'tool_result', 'system', 'error')`,
+      ),
+    )
+    .orderBy(desc(taskLogs.timestamp))
+    .limit(5);
+  return rows.map((r) => ({ content: String(r.content), timestamp: r.timestamp })).reverse();
 }
 
 function loadRepoRun(row: typeof tasks.$inferSelect, ref: RunRef): Run {
@@ -492,6 +518,7 @@ async function buildStandaloneSnapshot(ref: RunRef): Promise<WorldSnapshot | nul
       maxAutoResumes: 0,
       recentAutoResumeCount: 0,
     },
+    recentLogs: [],
     readErrors,
   };
 
@@ -643,6 +670,7 @@ async function buildPrReviewSnapshot(ref: RunRef): Promise<WorldSnapshot | null>
       maxAutoResumes: maxAutoRereviews,
       recentAutoResumeCount: recentAutoRereviewCount,
     },
+    recentLogs: [],
     readErrors,
   };
 
@@ -844,6 +872,7 @@ async function buildPersistentAgentSnapshot(ref: RunRef): Promise<WorldSnapshot 
       maxAutoResumes: 0,
       recentAutoResumeCount: 0,
     },
+    recentLogs: [],
     readErrors,
   };
   return Object.freeze(snapshot);

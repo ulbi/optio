@@ -57,6 +57,7 @@ import {
   searchTasks,
   updateTaskActivity,
   getStallThresholdForRepo,
+  getLastLogSummary,
 } from "./task-service.js";
 
 describe("StateRaceError", () => {
@@ -396,5 +397,48 @@ describe("updateTaskActivity", () => {
     );
     // Restore original where mock
     mockDb.where = origWhere;
+  });
+
+  describe("getLastLogSummary", () => {
+    // Build a query-builder mock chain for
+    //   db.select().from(taskLogs).where(...).orderBy(...).limit(n)
+    // where limit(n) resolves to the given rows.
+    function mockLogQuery(rows: unknown[]) {
+      const mockDb = db as any;
+      const limitResult = Promise.resolve(rows);
+      mockDb.limit.mockReturnValueOnce(limitResult);
+      mockDb.orderBy.mockReturnThis();
+      mockDb.where.mockReturnThis();
+      mockDb.from.mockReturnThis();
+      mockDb.select.mockReturnThis();
+    }
+
+    it("returns a single last log entry as the summary", async () => {
+      mockLogQuery([{ content: "The last entry", logType: "tool_use" }]);
+      const summary = await getLastLogSummary("task-123");
+      expect(summary).toContain("The last entry");
+    });
+
+    it("returns up to 5 log entries separated by newlines", async () => {
+      mockLogQuery([
+        { content: "tool_use: 1", logType: "tool_use" },
+        { content: "text: 2", logType: "text" },
+        { content: "tool_result: 3", logType: "tool_result" },
+        { content: "text: 4", logType: "text" },
+        { content: "tool_use: 5", logType: "tool_use" },
+      ]);
+      const summary = await getLastLogSummary("task-123");
+      expect(summary).toContain("tool_use: 1");
+      expect(summary).toContain("tool_use: 5");
+      // Multiple entries joined across lines
+      const lines = String(summary).split("\n");
+      expect(lines.length).toBeGreaterThanOrEqual(5);
+    });
+
+    it("returns undefined when there are no logs", async () => {
+      mockLogQuery([]);
+      const summary = await getLastLogSummary("task-123");
+      expect(summary).toBeUndefined();
+    });
   });
 });
