@@ -280,7 +280,7 @@ describe("OpenCodeAdapter", () => {
         const parsedConfig = JSON.parse(configFile!.content);
         expect(parsedConfig).toEqual({
           $schema: "https://opencode.ai/config.json",
-          model: "my-litellm-model",
+          model: "litellm/my-litellm-model",
           provider: {
             litellm: {
               npm: "@ai-sdk/openai-compatible",
@@ -298,7 +298,7 @@ describe("OpenCodeAdapter", () => {
           },
         });
         expect(config.env.OPENAI_API_KEY).toBe("sk-no-key-required");
-        expect(config.env.OPENCODE_MODEL).toBe("my-litellm-model");
+        expect(config.env.OPENCODE_MODEL).toBe("litellm/my-litellm-model");
         expect(config.env.OPENAI_BASE_URL).toBeUndefined();
         expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
       });
@@ -316,8 +316,8 @@ describe("OpenCodeAdapter", () => {
           "http://litellm-proxy.agents.svc.cluster.local:4000",
         );
         expect(parsedConfig.provider.litellm.options.apiKey).toBe("{env:OPENAI_API_KEY}");
-        expect(parsedConfig.model).toBe("my-litellm-model");
-        expect(config.env.OPENCODE_MODEL).toBe("my-litellm-model");
+        expect(parsedConfig.model).toBe("litellm/my-litellm-model");
+        expect(config.env.OPENCODE_MODEL).toBe("litellm/my-litellm-model");
         expect(config.env.OPENAI_BASE_URL).toBeUndefined();
         expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
       });
@@ -331,11 +331,11 @@ describe("OpenCodeAdapter", () => {
         });
         const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
         const parsedConfig = JSON.parse(configFile!.content);
-        expect(parsedConfig.model).toBe("litellm-default-model");
+        expect(parsedConfig.model).toBe("litellm/litellm-default-model");
         expect(parsedConfig.provider.litellm.models).toEqual({
           "litellm-default-model": { name: "litellm-default-model" },
         });
-        expect(config.env.OPENCODE_MODEL).toBe("litellm-default-model");
+        expect(config.env.OPENCODE_MODEL).toBe("litellm/litellm-default-model");
       });
 
       it("LiteLLM: opencodeModel wins over OPENCODE_DEFAULT_MODEL when both set", () => {
@@ -347,11 +347,11 @@ describe("OpenCodeAdapter", () => {
         });
         const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
         const parsedConfig = JSON.parse(configFile!.content);
-        expect(parsedConfig.model).toBe("repo-specific-model");
+        expect(parsedConfig.model).toBe("litellm/repo-specific-model");
         expect(parsedConfig.provider.litellm.models).toEqual({
           "repo-specific-model": { name: "repo-specific-model" },
         });
-        expect(config.env.OPENCODE_MODEL).toBe("repo-specific-model");
+        expect(config.env.OPENCODE_MODEL).toBe("litellm/repo-specific-model");
       });
     });
 
