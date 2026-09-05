@@ -171,7 +171,6 @@ describe("OpenCodeAdapter", () => {
       it("Native Anthropic: only ANTHROPIC_API_KEY set → minimal opencode.json", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "anthropic",
           opencodeModel: undefined,
           opencodeBaseUrl: undefined,
         });
@@ -188,8 +187,8 @@ describe("OpenCodeAdapter", () => {
       it("Native Anthropic: ANTHROPIC_API_KEY + OPENCODE_DEFAULT_MODEL set", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "anthropic",
           opencodeModel: undefined,
+          opencodeBaseUrl: undefined,
           opencodeDefaultModel: "claude-sonnet-4",
         });
         expect(config.env.OPENCODE_MODEL).toBe("claude-sonnet-4");
@@ -199,7 +198,6 @@ describe("OpenCodeAdapter", () => {
       it("Native OpenAI: only OPENAI_API_KEY set", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "openai",
           opencodeModel: undefined,
           opencodeBaseUrl: undefined,
         });
@@ -214,7 +212,6 @@ describe("OpenCodeAdapter", () => {
       it("Native OpenAI: OPENAI_API_KEY (emptystring) + OPENCODE_DEFAULT_MODEL set", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "openai",
           opencodeModel: undefined,
           opencodeBaseUrl: undefined,
           opencodeDefaultModel: "gpt-4o",
@@ -226,7 +223,6 @@ describe("OpenCodeAdapter", () => {
       it("Native OpenAI: OPENAI_API_KEY + OPENCODE_DEFAULT_MODEL set", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "openai",
           opencodeModel: undefined,
           opencodeBaseUrl: undefined,
           opencodeDefaultModel: "gpt-4o",
@@ -238,7 +234,6 @@ describe("OpenCodeAdapter", () => {
       it("Native Groq: only GROQ_API_KEY set", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "groq",
           opencodeModel: undefined,
           opencodeBaseUrl: undefined,
         });
@@ -254,7 +249,6 @@ describe("OpenCodeAdapter", () => {
       it("Native Groq: GROQ_API_KEY + OPENCODE_DEFAULT_MODEL set", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "groq",
           opencodeModel: undefined,
           opencodeBaseUrl: undefined,
           opencodeDefaultModel: "llama-3.1-70b",
@@ -265,7 +259,6 @@ describe("OpenCodeAdapter", () => {
       it("Native Anthropic: multiple provider keys set (ANTHROPIC_API_KEY + OPENAI_API_KEY)", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "anthropic",
           opencodeModel: undefined,
           opencodeBaseUrl: undefined,
         });
@@ -278,9 +271,8 @@ describe("OpenCodeAdapter", () => {
       it("LiteLLM: URL + Model, WITHOUT OPENAI_API_KEY secret → placeholder key", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "litellm",
           opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
-          opencodeModel: "my-litellm-model",
+          opencodeModel: "litellm/my-litellm-model",
           opencodeDefaultModel: undefined,
         });
         const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
@@ -314,9 +306,8 @@ describe("OpenCodeAdapter", () => {
       it("LiteLLM: URL + Model, WITH OPENAI_API_KEY secret", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "litellm",
           opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
-          opencodeModel: "my-litellm-model",
+          opencodeModel: "litellm/my-litellm-model",
           opencodeDefaultModel: undefined,
         });
         const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
@@ -334,10 +325,9 @@ describe("OpenCodeAdapter", () => {
       it("LiteLLM: fallback to OPENCODE_DEFAULT_MODEL when opencodeModel not set", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "litellm",
           opencodeBaseUrl: "http://litellm-proxy:4000",
           opencodeModel: undefined,
-          opencodeDefaultModel: "litellm-default-model",
+          opencodeDefaultModel: "litellm/litellm-default-model",
         });
         const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
         const parsedConfig = JSON.parse(configFile!.content);
@@ -351,9 +341,8 @@ describe("OpenCodeAdapter", () => {
       it("LiteLLM: opencodeModel wins over OPENCODE_DEFAULT_MODEL when both set", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "litellm",
           opencodeBaseUrl: "http://litellm-proxy:4000",
-          opencodeModel: "repo-specific-model",
+          opencodeModel: "litellm/repo-specific-model",
           opencodeDefaultModel: "global-secret-model",
         });
         const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
@@ -370,7 +359,6 @@ describe("OpenCodeAdapter", () => {
       it("Native: opencodeModel wins over OPENCODE_DEFAULT_MODEL when both set", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "anthropic",
           opencodeModel: "anthropic/claude-opus-4",
           opencodeDefaultModel: "claude-sonnet-4",
         });
@@ -383,9 +371,8 @@ describe("OpenCodeAdapter", () => {
       it("OPENAI_API_KEY secret resolves to container env var", () => {
         const config = adapter.buildContainerConfig({
           ...baseInput,
-          opencodeProvider: "litellm",
           opencodeBaseUrl: "http://litellm-proxy:4000/v1",
-          opencodeModel: "test-model",
+          opencodeModel: "litellm/test-model",
         });
         expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
       });

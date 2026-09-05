@@ -70,7 +70,17 @@ export class OpenCodeAdapter implements AgentAdapter {
     // When using a custom base URL, provider API keys are optional — the adapter
     // sets a placeholder OPENAI_API_KEY in env that will be overridden if a real
     // secret exists. Without a custom base URL, require standard provider keys.
-    const isLitellm = input.opencodeProvider === "litellm";
+    // LiteLLM mode is triggered by a `litellm/<model>` model prefix. The full
+    // `litellm/<model>` name is what gets passed to opencode (CLI + top-level
+    // config.model) so it can route to the litellm provider. Only the
+    // provider-scoped `models` map key uses the bare proxy model name (the part
+    // after `litellm/`), matching opencode's LiteLLM convention.
+    const isLitellm =
+      input.opencodeModel?.startsWith("litellm/") === true ||
+      input.opencodeDefaultModel?.startsWith("litellm/") === true;
+
+    const fullModel = input.opencodeModel ?? input.opencodeDefaultModel;
+    const proxyModel = isLitellm ? fullModel?.replace(/^litellm\//, "") : undefined;
 
     const config: OpenCodeConfig = {
       $schema: "https://opencode.ai/config.json",
@@ -82,10 +92,9 @@ export class OpenCodeAdapter implements AgentAdapter {
       requiredSecrets.push("OPENAI_API_KEY");
       env.OPENAI_API_KEY = "sk-no-key-required";
       if (input.opencodeBaseUrl) {
-        const effectiveModel = input.opencodeModel ?? input.opencodeDefaultModel;
-        if (effectiveModel) {
-          config.model = effectiveModel;
-          env.OPENCODE_MODEL = effectiveModel;
+        if (fullModel) {
+          config.model = fullModel;
+          env.OPENCODE_MODEL = fullModel;
         }
         config.provider = {
           litellm: {
@@ -95,10 +104,10 @@ export class OpenCodeAdapter implements AgentAdapter {
               baseURL: input.opencodeBaseUrl,
               apiKey: "{env:OPENAI_API_KEY}",
             },
-            models: effectiveModel
+            models: proxyModel
               ? {
-                  [effectiveModel]: {
-                    name: effectiveModel,
+                  [proxyModel]: {
+                    name: proxyModel,
                   },
                 }
               : {},
@@ -110,11 +119,9 @@ export class OpenCodeAdapter implements AgentAdapter {
     }
 
     // opencodeModel (repo-specific) always wins over opencodeDefaultModel (global secret)
-    if (input.opencodeModel) {
-      env.OPENCODE_MODEL = input.opencodeModel;
-      env.OPTIO_OPENCODE_MODEL = input.opencodeModel;
-    } else if (input.opencodeDefaultModel) {
-      env.OPENCODE_MODEL = input.opencodeDefaultModel;
+    if (fullModel) {
+      env.OPENCODE_MODEL = fullModel;
+      env.OPTIO_OPENCODE_MODEL = fullModel;
     }
     // Set named agent if configured (e.g. "build", "plan")
     if (input.opencodeAgent) {
