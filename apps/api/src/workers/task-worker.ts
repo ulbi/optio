@@ -463,7 +463,6 @@ export function startTaskWorker() {
           copilotEffort: repoConfig?.copilotEffort ?? undefined,
           opencodeModel: repoConfig?.opencodeModel ?? opencodeDefaultModel,
           opencodeAgent: repoConfig?.opencodeAgent ?? undefined,
-          opencodeProvider: repoConfig?.opencodeProvider ?? undefined,
           opencodeBaseUrl: repoConfig?.opencodeBaseUrl ?? opencodeDefaultBaseUrl,
           cursorModel: repoConfig?.cursorModel ?? undefined,
           geminiAuthMode,

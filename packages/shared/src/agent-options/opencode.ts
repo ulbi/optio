@@ -16,14 +16,6 @@ export const OPENCODE_CATALOG: ProviderCatalog = {
   aliases: {},
   options: [
     {
-      key: "opencodeProvider",
-      label: "Provider",
-      kind: "text",
-      placeholder: "anthropic",
-      helpText:
-        "Enter the upstream provider: anthropic, openai, groq, litellm, or custom (for self-hosted). 'litellm' enables LiteLLM proxy mode via Custom Base URL.",
-    },
-    {
       key: "opencodeAgent",
       label: "Agent",
       kind: "text",
