@@ -31,7 +31,6 @@ export interface AgentTaskInput {
   opencodeModel?: string;
   opencodeAgent?: string;
   opencodeBaseUrl?: string;
-  opencodeProvider?: string;
   opencodeDefaultModel?: string;
   cursorModel?: string;
   openclawModel?: string;
