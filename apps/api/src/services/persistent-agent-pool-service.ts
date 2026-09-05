@@ -254,6 +254,7 @@ export async function execTurnInPod(
     `cd /workspace/turns/${turnId}`,
     `export OPTIO_PERSISTENT_AGENT_TURN_ID="${turnId}"`,
     `set +e`,
+    `exec > >(tee -a /workspace/turns/${turnId}/.optio-agent.log) 2>&1`,
     ...agentCommand,
     `AGENT_EXIT=$?`,
     `exit $AGENT_EXIT`,

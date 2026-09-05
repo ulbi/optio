@@ -174,6 +174,7 @@ function repoSnapshot(overrides: Partial<WorldSnapshot> = {}): WorldSnapshot {
       maxAutoResumes: 10,
       recentAutoResumeCount: 0,
     },
+    recentLogs: [],
     readErrors: [],
     ...overrides,
   };
@@ -230,6 +231,7 @@ function standaloneSnapshot(overrides: Partial<WorldSnapshot> = {}): WorldSnapsh
       maxAutoResumes: 0,
       recentAutoResumeCount: 0,
     },
+    recentLogs: [],
     readErrors: [],
     ...overrides,
   };

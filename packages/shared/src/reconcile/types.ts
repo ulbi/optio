@@ -241,7 +241,7 @@ export interface Capacity {
 }
 
 export type WorldReadError = {
-  source: "pr" | "pod" | "deps" | "capacity";
+  source: "pr" | "pod" | "deps" | "capacity" | "logs";
   message: string;
 };
 
@@ -277,6 +277,9 @@ export interface WorldSnapshot {
     maxAutoResumes: number;
     recentAutoResumeCount: number;
   };
+  /** The last few meaningful agent log lines, newest last, for stall
+   *  diagnostics. Loaded only for RUNNING tasks; empty otherwise. */
+  recentLogs: Array<{ content: string; timestamp: Date | string }>;
   readErrors: WorldReadError[];
 }
 

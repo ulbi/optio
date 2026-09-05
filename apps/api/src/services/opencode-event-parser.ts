@@ -195,8 +195,24 @@ export function parseOpenCodeEvent(
     return { entries, sessionId };
   }
 
-  // Unknown JSON event — skip silently
-  return { entries: [], sessionId };
+  // Technically-meaningful events that convey no user-visible content and
+  // should stay quiet (token streaming indicators, etc.).
+  const quietTypes = new Set(["stream_delta", "delta", "ping", "pong", "init_only", "ready"]);
+
+  // Unknown JSON event — log the raw line as text instead of silently
+  // dropping it, so unexpected OpenCode output (schemata changes, provider
+  // errors, debug frames) never disappears without a trace.
+  if (!quietTypes.has(event.type ?? "")) {
+    const content = JSON.stringify(event).slice(0, 2000);
+    entries.push({
+      taskId,
+      timestamp,
+      sessionId,
+      type: "text",
+      content: content.length > 2000 ? content + "\u2026" : content,
+    });
+  }
+  return { entries, sessionId };
 }
 
 function parseArgs(args: unknown): Record<string, unknown> | undefined {

@@ -78,6 +78,7 @@ function snapshot(
       maxAutoResumes: 0,
       recentAutoResumeCount: 0,
     },
+    recentLogs: [],
     readErrors: [],
     ...extras,
   };

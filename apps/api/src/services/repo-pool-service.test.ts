@@ -1242,4 +1242,27 @@ describe("execTaskInRepoPod", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("generates script with tee to logfile in worktree", async () => {
+    mockRuntimeExec.mockResolvedValueOnce({ stdin: { write: vi.fn() } });
+    const pod = {
+      id: "pod-1",
+      repoUrl: "https://github.com/org/repo",
+      podName: "optio-repo-org-repo-0",
+      podId: "k8s-pod-1",
+      state: "ready",
+    };
+
+    await execTaskInRepoPod(pod as any, "task-1", [`echo "[optio] agent"`], {
+      OPTIO_PROMPT: "test prompt",
+      OPTIO_REPO_BRANCH: "main",
+    });
+
+    const execCall = mockRuntimeExec.mock.calls[0];
+    const script: string = execCall[1][2];
+
+    // Should contain tee to logfile in worktree
+    expect(script).toContain("tee -a /workspace/tasks/task-1/.optio-agent.log");
+    expect(script).toContain("exec > >(tee -a /workspace/tasks/task-1/.optio-agent.log) 2>&1");
+  });
 });
