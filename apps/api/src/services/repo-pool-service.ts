@@ -774,10 +774,16 @@ async function createRepoPodViaStatefulSet(
       logger.warn("OPTIO_AGENT_PVC_SIZE is deprecated. Use OPTIO_HOME_PVC_SIZE instead.");
     }
     if (process.env.OPTIO_AGENT_PVC_STORAGE_CLASS) {
-      logger.warn("OPTIO_AGENT_PVC_STORAGE_CLASS is deprecated. Use OPTIO_HOME_PVC_STORAGE_CLASS instead.");
+      logger.warn(
+        "OPTIO_AGENT_PVC_STORAGE_CLASS is deprecated. Use OPTIO_HOME_PVC_STORAGE_CLASS instead.",
+      );
     }
-    const homePvcSize = process.env.OPTIO_HOME_PVC_SIZE ?? process.env.OPTIO_AGENT_PVC_SIZE ?? "10Gi";
-    const homePvcStorageClass = process.env.OPTIO_HOME_PVC_STORAGE_CLASS ?? process.env.OPTIO_AGENT_PVC_STORAGE_CLASS ?? undefined;
+    const homePvcSize =
+      process.env.OPTIO_HOME_PVC_SIZE ?? process.env.OPTIO_AGENT_PVC_SIZE ?? "10Gi";
+    const homePvcStorageClass =
+      process.env.OPTIO_HOME_PVC_STORAGE_CLASS ??
+      process.env.OPTIO_AGENT_PVC_STORAGE_CLASS ??
+      undefined;
 
     logger.info(
       {

@@ -102,6 +102,15 @@ export class OpenCodeAdapter implements AgentAdapter {
             name: "LiteLLM Proxy",
             options: {
               baseURL: input.opencodeBaseUrl,
+              // Placeholder — rendered to the literal value by the API workers
+              // via substituteSecretPlaceholders() AFTER secrets are resolved.
+              // opencode itself cannot resolve {env:VAR} in provider options
+              // (upstream anomalyco/opencode#27853): the LLM request is sent
+              // without an Authorization header → 401 "No api key passed in".
+              // SECURITY: this placeholder becomes a plaintext secret on the
+              // pod (see docs/security/setup-file-plaintext-secrets.md).
+              // Revert to a daemon-mediated secret hand-off once
+              // docs/plans/agent-daemon-pid1.md ships.
               apiKey: "{env:OPENAI_API_KEY}",
             },
             models: proxyModel
