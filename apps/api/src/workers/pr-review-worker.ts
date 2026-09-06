@@ -41,6 +41,7 @@ import {
   resolveSecretsForTask,
   resolveSecretsForSetup,
   retrieveSecretWithFallback,
+  substituteSecretPlaceholders,
 } from "../services/secret-service.js";
 import { isGitHubAppConfigured } from "../services/github-app-service.js";
 import { getCredentialSecret } from "../services/credential-secret-service.js";
@@ -420,12 +421,6 @@ export function startPrReviewWorker() {
           }
         }
 
-        if (agentConfig.setupFiles && agentConfig.setupFiles.length > 0) {
-          agentConfig.env.OPTIO_SETUP_FILES = Buffer.from(
-            JSON.stringify(agentConfig.setupFiles),
-          ).toString("base64");
-        }
-
         // ── Secrets ───────────────────────────────────────────────
         const secretNames = [
           ...new Set([
@@ -439,6 +434,20 @@ export function startPrReviewWorker() {
           workspaceId,
           userId,
         );
+
+        // Render {env:NAME} placeholders in setup file contents with literal
+        // secret values (opencode does not resolve them itself — see
+        // docs/security/setup-file-plaintext-secrets.md), THEN base64-encode
+        // the setup files into pod env. Order matters: substitution must run
+        // before encoding, after secrets are resolved, and BEFORE allEnv is
+        // snapshotted from agentConfig.env below.
+        if (agentConfig.setupFiles && agentConfig.setupFiles.length > 0) {
+          substituteSecretPlaceholders(agentConfig.setupFiles, resolvedSecrets);
+          agentConfig.env.OPTIO_SETUP_FILES = Buffer.from(
+            JSON.stringify(agentConfig.setupFiles),
+          ).toString("base64");
+        }
+
         const allEnv: Record<string, string> = { ...agentConfig.env, ...resolvedSecrets };
 
         for (const secretName of ["GITHUB_TOKEN", "GITLAB_TOKEN", "GITLAB_HOST"]) {

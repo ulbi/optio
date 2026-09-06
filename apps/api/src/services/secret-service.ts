@@ -484,3 +484,39 @@ export async function resolveSecretsForSetup(
   // Resolve with repo→global fallback (no userId — setup is pod-level, not user-level)
   return resolveSecretsForTask(safeNames, repoUrl, workspaceId);
 }
+
+/**
+ * Substitute `{env:NAME}` placeholders inside agent setup file contents with
+ * literal secret values, mutating the files in place.
+ *
+ * WHY this exists: opencode does not resolve `{env:VAR}` references inside
+ * `provider.*.options.apiKey` (upstream anomalyco/opencode#27853, closed as
+ * not planned) — the LLM request is sent without an Authorization header and
+ * the proxy rejects it with 401 "No api key passed in". Until the PID 1 agent
+ * daemon (docs/plans/agent-daemon-pid1.md) can hand secrets to child agent
+ * processes without persisting them, the adapter relies on `{env:...}`
+ * placeholders in setup files and we render the literal value here.
+ *
+ * SECURITY (known trade-off): decrypted secret values are embedded in setup
+ * file contents — and therefore in the OPTIO_SETUP_FILES pod env variable and
+ * in plaintext files on the pod's persistent volume. Tracked in
+ * docs/security/setup-file-plaintext-secrets.md. Remove when the agent daemon
+ * plan ships.
+ *
+ * Empty values are never substituted so a misconfigured secret fails visibly
+ * (placeholder remains) instead of silently producing an empty API key.
+ * Files that carry `contentBase64` (binary payloads) are left untouched.
+ */
+export function substituteSecretPlaceholders(
+  setupFiles: NonNullable<import("@optio/shared").AgentContainerConfig["setupFiles"]>,
+  secretValues: Record<string, string>,
+): void {
+  if (!setupFiles?.length || !secretValues) return;
+  for (const file of setupFiles) {
+    if (typeof file.content !== "string") continue;
+    for (const [name, value] of Object.entries(secretValues)) {
+      if (!value) continue;
+      file.content = file.content.replaceAll(`{env:${name}}`, value);
+    }
+  }
+}
