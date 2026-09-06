@@ -2,6 +2,22 @@ import type { AgentTaskInput, AgentContainerConfig, AgentResult } from "@optio/s
 import { TASK_BRANCH_PREFIX } from "@optio/shared";
 import type { AgentAdapter } from "./types.js";
 
+interface OpenCodeConfig {
+  $schema: string;
+  model?: string;
+  provider?: {
+    litellm?: {
+      npm: string;
+      name: string;
+      options: {
+        baseURL: string;
+        apiKey: string;
+      };
+      models: Record<string, { name: string }>;
+    };
+  };
+}
+
 /**
  * OpenCode CLI (opencode run --format json) outputs NDJSON events.
  * Each line is a JSON object. The exact schema is not fully documented,
@@ -54,15 +70,58 @@ export class OpenCodeAdapter implements AgentAdapter {
     // When using a custom base URL, provider API keys are optional — the adapter
     // sets a placeholder OPENAI_API_KEY in env that will be overridden if a real
     // secret exists. Without a custom base URL, require standard provider keys.
-    if (!input.opencodeBaseUrl) {
-      requiredSecrets.push("ANTHROPIC_API_KEY", "OPENAI_API_KEY");
-    }
+    // LiteLLM mode is triggered by a `litellm/<model>` model prefix. The full
+    // `litellm/<model>` name is what gets passed to opencode (CLI + top-level
+    // config.model) so it can route to the litellm provider. Only the
+    // provider-scoped `models` map key uses the bare proxy model name (the part
+    // after `litellm/`), matching opencode's LiteLLM convention.
+    const isLitellm =
+      input.opencodeModel?.startsWith("litellm/") === true ||
+      input.opencodeDefaultModel?.startsWith("litellm/") === true;
+
+    const fullModel = input.opencodeModel ?? input.opencodeDefaultModel;
+    const proxyModel = isLitellm ? fullModel?.replace(/^litellm\//, "") : undefined;
+
+    const config: OpenCodeConfig = {
+      $schema: "https://opencode.ai/config.json",
+    };
 
     const setupFiles: AgentContainerConfig["setupFiles"] = [];
 
-    // Set model if configured (e.g. "anthropic/claude-sonnet-4")
-    if (input.opencodeModel) {
-      env.OPTIO_OPENCODE_MODEL = input.opencodeModel;
+    if (isLitellm) {
+      requiredSecrets.push("OPENAI_API_KEY");
+      env.OPENAI_API_KEY = "sk-no-key-required";
+      if (input.opencodeBaseUrl) {
+        if (fullModel) {
+          config.model = fullModel;
+          env.OPENCODE_MODEL = fullModel;
+        }
+        config.provider = {
+          litellm: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "LiteLLM Proxy",
+            options: {
+              baseURL: input.opencodeBaseUrl,
+              apiKey: "{env:OPENAI_API_KEY}",
+            },
+            models: proxyModel
+              ? {
+                  [proxyModel]: {
+                    name: proxyModel,
+                  },
+                }
+              : {},
+          },
+        };
+      }
+    } else if (!input.opencodeBaseUrl) {
+      requiredSecrets.push("ANTHROPIC_API_KEY", "OPENAI_API_KEY");
+    }
+
+    // opencodeModel (repo-specific) always wins over opencodeDefaultModel (global secret)
+    if (fullModel) {
+      env.OPENCODE_MODEL = fullModel;
+      env.OPTIO_OPENCODE_MODEL = fullModel;
     }
     // Set named agent if configured (e.g. "build", "plan")
     if (input.opencodeAgent) {
@@ -70,7 +129,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     }
 
     // Custom OpenAI-compatible endpoint (e.g. vLLM, lightllm, Ollama)
-    if (input.opencodeBaseUrl) {
+    if (input.opencodeBaseUrl && !isLitellm) {
       env.OPENAI_BASE_URL = input.opencodeBaseUrl;
       // Local endpoints typically don't require a real API key — set a
       // placeholder that gets overridden if a real secret is configured.
@@ -80,7 +139,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     // Pre-seed a minimal opencode config so the CLI doesn't hit first-run setup
     setupFiles.push({
       path: "/home/agent/.config/opencode/opencode.json",
-      content: JSON.stringify({ $schema: "https://opencode.ai/config.json" }),
+      content: JSON.stringify(config),
     });
 
     // Write the task file into the worktree
