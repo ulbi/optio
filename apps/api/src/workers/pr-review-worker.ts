@@ -506,6 +506,12 @@ export function startPrReviewWorker() {
           ...(allEnv.OPTIO_SETUP_COMMANDS
             ? { OPTIO_SETUP_COMMANDS: allEnv.OPTIO_SETUP_COMMANDS }
             : {}),
+          // npm packages pre-installed by repo-init.sh into ~/.config/opencode
+          // before the first task (e.g. opencode provider plugins). Sourced
+          // from the API pod env, set via Helm value agent.preinstallNpmPackages.
+          ...(process.env.OPTIO_NPM_PREINSTALL
+            ? { OPTIO_NPM_PREINSTALL: process.env.OPTIO_NPM_PREINSTALL }
+            : {}),
         };
         const setupSecrets = await resolveSecretsForSetup(review.repoUrl, workspaceId);
         Object.assign(podEnv, setupSecrets);
