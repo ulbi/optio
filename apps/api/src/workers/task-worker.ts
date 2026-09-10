@@ -1894,7 +1894,7 @@ export function buildAgentCommand(
         : "";
       return [
         `echo "[optio] Running OpenCode (experimental)..."`,
-        `opencode run --format json${modelFlag}${agentFlag}${resumeFlag} "$OPTIO_PROMPT" < /dev/null`,
+        `opencode run --format json --dangerously-skip-permissions${modelFlag}${agentFlag}${resumeFlag} "$OPTIO_PROMPT" < /dev/null`,
       ];
     }
     case "gemini": {
