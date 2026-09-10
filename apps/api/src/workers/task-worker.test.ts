@@ -204,6 +204,17 @@ describe("buildAgentCommand", () => {
       expect(cmds.some((c) => c.includes("--format json"))).toBe(true);
     });
 
+    it("redirects opencode stdin from /dev/null so run-mode stdin reads get EOF", () => {
+      // opencode's run mode blocks forever when stdin is an open pipe that
+      // never provides data or EOF (the k8s exec stream stays open for log
+      // streaming). A closed /dev/null stdin is safe: the prompt arrives via
+      // argv, not stdin.
+      const env = { OPTIO_PROMPT: "Fix the bug" };
+      const cmds = buildAgentCommand("opencode", env);
+      const cmd = cmds.find((c) => c.includes("opencode run"));
+      expect(cmd).toContain("< /dev/null");
+    });
+
     it("includes experimental label in echo", () => {
       const env = { OPTIO_PROMPT: "Fix the bug" };
       const cmds = buildAgentCommand("opencode", env);
