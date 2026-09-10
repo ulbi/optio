@@ -111,6 +111,58 @@ describe("repo-detect-service", () => {
     expect(result.testCommand).toBe("bundle exec rspec");
   });
 
+  it("detects dotnet project from .csproj", async () => {
+    mockPlatform.listRepoContents.mockResolvedValue([
+      { name: "MyApp.csproj", type: "file" },
+      { name: "Program.cs", type: "file" },
+    ]);
+
+    const result = await detectRepoConfig("https://github.com/owner/repo", "token");
+    expect(result.imagePreset).toBe("dotnet");
+    expect(result.languages).toContain("csharp");
+    expect(result.testCommand).toBe("dotnet test");
+  });
+
+  it("detects dotnet project from .sln", async () => {
+    mockPlatform.listRepoContents.mockResolvedValue([{ name: "MySolution.sln", type: "file" }]);
+
+    const result = await detectRepoConfig("https://github.com/owner/repo", "token");
+    expect(result.imagePreset).toBe("dotnet");
+    expect(result.languages).toContain("csharp");
+    expect(result.testCommand).toBe("dotnet test");
+  });
+
+  it("detects dotnet project from global.json", async () => {
+    mockPlatform.listRepoContents.mockResolvedValue([{ name: "global.json", type: "file" }]);
+
+    const result = await detectRepoConfig("https://github.com/owner/repo", "token");
+    expect(result.imagePreset).toBe("dotnet");
+    expect(result.languages).toContain("csharp");
+    expect(result.testCommand).toBe("dotnet test");
+  });
+
+  it("detects fsharp project from .fsproj", async () => {
+    mockPlatform.listRepoContents.mockResolvedValue([{ name: "MyApp.fsproj", type: "file" }]);
+
+    const result = await detectRepoConfig("https://github.com/owner/repo", "token");
+    expect(result.imagePreset).toBe("dotnet");
+    expect(result.languages).toContain("fsharp");
+    expect(result.languages).not.toContain("csharp");
+    expect(result.testCommand).toBe("dotnet test");
+  });
+
+  it("uses full preset for node + dotnet multi-language projects", async () => {
+    mockPlatform.listRepoContents.mockResolvedValue([
+      { name: "package.json", type: "file" },
+      { name: "MyApp.csproj", type: "file" },
+    ]);
+
+    const result = await detectRepoConfig("https://github.com/owner/repo", "token");
+    expect(result.imagePreset).toBe("full");
+    expect(result.languages).toContain("node");
+    expect(result.languages).toContain("csharp");
+  });
+
   it("detects dart project", async () => {
     mockPlatform.listRepoContents.mockResolvedValue([{ name: "pubspec.yaml", type: "file" }]);
 

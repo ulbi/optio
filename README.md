@@ -265,7 +265,7 @@ packages/
   agent-adapters/     Claude Code + Codex + Copilot + Gemini + OpenCode + Cursor adapters
   ticket-providers/   GitHub Issues, Linear, Jira, Notion
 
-images/               Container Dockerfiles: base, node, python, go, rust, full
+images/               Container Dockerfiles: base, node, python, go, rust, ruby, dart, dotnet, full
 helm/optio/           Helm chart for production Kubernetes deployment
 scripts/              Setup, init, and entrypoint scripts
 ```

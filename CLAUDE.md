@@ -211,7 +211,7 @@ cd apps/api && npx tsx src/db/migrate.ts  # Apply migrations (standalone runner)
 bash scripts/check-migration-prefixes.sh  # Check for duplicate prefixes
 
 # Agent images
-./images/build.sh                     # Build all presets (base, node, python, go, rust, full)
+./images/build.sh                     # Build all presets (base, node, python, go, rust, ruby, dart, dotnet, full)
 
 # Helm
 helm lint helm/optio --set encryption.key=test

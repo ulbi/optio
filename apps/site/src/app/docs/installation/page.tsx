@@ -55,7 +55,7 @@ cd optio
             pnpm install
           </code>
         </li>
-        <li>Builds all agent images (base, node, python, go, rust, full)</li>
+        <li>Builds all agent images (base, node, python, go, rust, ruby, dart, dotnet, full)</li>
         <li>Builds API and web Docker images</li>
         <li>Installs the Kubernetes metrics-server</li>
         <li>Deploys via Helm with NodePort services (API: 30400, Web: 30310)</li>

@@ -34,40 +34,43 @@ echo "=== Building Optio Agent Images ==="
 echo "Tag: ${TAG}"
 
 # Base image (all others depend on this)
-echo "[1/10] Building optio-base..."
+echo "[1/11] Building optio-base..."
 docker build ${PLATFORM_FLAG} -t "optio-base:${TAG}" -f "${SCRIPT_DIR}/base.Dockerfile" "${ROOT_DIR}"
 
 echo "Using base internal image: optio-base:${TAG}"
 BASE_IMAGE="optio-base:${TAG}"
 
 # Language-specific images (can be built in parallel)
-echo "[2/10] Building optio-node..."
+echo "[2/11] Building optio-node..."
 docker build ${PLATFORM_FLAG} -t "optio-node:${TAG}" --build-arg BASE_IMAGE="${BASE_IMAGE}" -f "${SCRIPT_DIR}/node.Dockerfile" "${ROOT_DIR}" &
 
-echo "[3/10] Building optio-python..."
+echo "[3/11] Building optio-python..."
 docker build ${PLATFORM_FLAG} -t "optio-python:${TAG}" --build-arg BASE_IMAGE="${BASE_IMAGE}" -f "${SCRIPT_DIR}/python.Dockerfile" "${ROOT_DIR}" &
 
-echo "[4/10] Building optio-go..."
+echo "[4/11] Building optio-go..."
 docker build ${PLATFORM_FLAG} -t "optio-go:${TAG}" --build-arg BASE_IMAGE="${BASE_IMAGE}" -f "${SCRIPT_DIR}/go.Dockerfile" "${ROOT_DIR}" &
 
-echo "[5/10] Building optio-rust..."
+echo "[5/11] Building optio-rust..."
 docker build ${PLATFORM_FLAG} -t "optio-rust:${TAG}" --build-arg BASE_IMAGE="${BASE_IMAGE}" -f "${SCRIPT_DIR}/rust.Dockerfile" "${ROOT_DIR}" &
 
-echo "[6/10] Building optio-ruby..."
+echo "[6/11] Building optio-ruby..."
 docker build ${PLATFORM_FLAG} -t "optio-ruby:${TAG}" --build-arg BASE_IMAGE="${BASE_IMAGE}" -f "${SCRIPT_DIR}/ruby.Dockerfile" "${ROOT_DIR}" &
 
-echo "[7/10] Building optio-dart..."
+echo "[7/11] Building optio-dart..."
 docker build ${PLATFORM_FLAG} -t "optio-dart:${TAG}" --build-arg BASE_IMAGE="${BASE_IMAGE}" -f "${SCRIPT_DIR}/dart.Dockerfile" "${ROOT_DIR}" &
 
-echo "[8/10] Building optio-dind..."
+echo "[8/11] Building optio-dotnet..."
+docker build ${PLATFORM_FLAG} -t "optio-dotnet:${TAG}" --build-arg BASE_IMAGE="${BASE_IMAGE}" -f "${SCRIPT_DIR}/dotnet.Dockerfile" "${ROOT_DIR}" &
+
+echo "[9/11] Building optio-dind..."
 docker build ${PLATFORM_FLAG} -t "optio-dind:${TAG}" -f "${SCRIPT_DIR}/dind.Dockerfile" "${ROOT_DIR}" &
 
-echo "[9/10] Building optio-optio (operations assistant)..."
+echo "[10/11] Building optio-optio (operations assistant)..."
 docker build ${PLATFORM_FLAG} -t "optio-optio:${TAG}" -f "${ROOT_DIR}/Dockerfile.optio" "${ROOT_DIR}" &
 
 wait
 
-echo "[10/10] Building optio-full..."
+echo "[11/11] Building optio-full..."
 docker build ${PLATFORM_FLAG} -t "optio-full:${TAG}" --build-arg BASE_IMAGE="${BASE_IMAGE}" -f "${SCRIPT_DIR}/full.Dockerfile" "${ROOT_DIR}"
 
 # Tag optio-base as the default

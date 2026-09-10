@@ -49,6 +49,18 @@ export async function detectRepoConfig(repoUrl: string, token: string): Promise<
       languages.push("ruby");
       testCommand = testCommand ?? "bundle exec rspec";
     }
+    const hasCsProj = [...fileNames].some((name) => name.endsWith(".csproj"));
+    const hasFsProj = [...fileNames].some((name) => name.endsWith(".fsproj"));
+    const hasSolution = [...fileNames].some(
+      (name) => name.endsWith(".sln") || name.endsWith(".slnx"),
+    );
+    if (hasCsProj || hasFsProj || hasSolution || fileNames.has("global.json")) {
+      if (hasFsProj) languages.push("fsharp");
+      if (hasCsProj || hasSolution || (fileNames.has("global.json") && !hasFsProj)) {
+        languages.push("csharp");
+      }
+      testCommand = testCommand ?? "dotnet test";
+    }
     if (fileNames.has("pubspec.yaml")) {
       languages.push("dart");
       testCommand = testCommand ?? "dart test";
@@ -71,6 +83,8 @@ export async function detectRepoConfig(repoUrl: string, token: string): Promise<
       imagePreset = "python";
     } else if (languages.includes("ruby")) {
       imagePreset = "ruby";
+    } else if (languages.includes("csharp") || languages.includes("fsharp")) {
+      imagePreset = "dotnet";
     } else if (languages.includes("dart")) {
       imagePreset = "dart";
     }

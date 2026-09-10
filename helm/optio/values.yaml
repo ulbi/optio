@@ -126,7 +126,7 @@ agent:
     repository: ghcr.io/jonwiggins/optio-agent-base
     tag: latest
     pullPolicy: IfNotPresent
-    # Prefix used to resolve preset images (base, node, python, go, rust, full, dind).
+    # Prefix used to resolve preset images (base, node, python, go, rust, full, dind, dotnet).
     # The full image name is: {prefix}{preset}:{tag}
     # GHCR: ghcr.io/jonwiggins/optio-agent-  →  ghcr.io/jonwiggins/optio-agent-node:latest
     # Local: optio-                           →  optio-node:latest
