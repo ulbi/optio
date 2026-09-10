@@ -61,13 +61,6 @@ export class OpenCodeAdapter implements AgentAdapter {
       OPTIO_PROMPT: prompt,
       OPTIO_AGENT_TYPE: "opencode",
       OPTIO_BRANCH_NAME: `${TASK_BRANCH_PREFIX}${input.taskId}`,
-      // opencode fetches the models.dev catalog and checks for updates over
-      // HTTPS at startup with no effective timeout; in clusters where such
-      // connections blackhole (established but silent), opencode hangs before
-      // the first LLM call. The model metadata is unnecessary for custom
-      // openai-compatible providers declared in opencode.json.
-      OPENCODE_DISABLE_MODELS_FETCH: "1",
-      OPENCODE_DISABLE_AUTOUPDATE: "1",
     };
 
     // OpenCode reads provider-specific env vars directly (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)

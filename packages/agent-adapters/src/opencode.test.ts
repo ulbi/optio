@@ -54,12 +54,13 @@ describe("OpenCodeAdapter", () => {
       repoBranch: "main",
     };
 
-    it("disables the models.dev startup fetch and autoupdate", () => {
-      // Both fetches hit Cloudflare-fronted hosts at startup with no timeout;
-      // blackholed connections hang opencode forever before the first LLM call.
+    it("does not set extra workaround env vars — the stdin EOF fix is the only change", () => {
+      // Keep the surface minimal: the models.dev startup fetch is harmless
+      // once opencode's stdin gets EOF (proven via exec replication); no
+      // precautionary env vars.
       const config = adapter.buildContainerConfig(baseInput);
-      expect(config.env.OPENCODE_DISABLE_MODELS_FETCH).toBe("1");
-      expect(config.env.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
+      expect(config.env.OPENCODE_DISABLE_MODELS_FETCH).toBeUndefined();
+      expect(config.env.OPENCODE_DISABLE_AUTOUPDATE).toBeUndefined();
     });
 
     it("uses rendered prompt when available", () => {
