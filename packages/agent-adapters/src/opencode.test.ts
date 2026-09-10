@@ -54,6 +54,14 @@ describe("OpenCodeAdapter", () => {
       repoBranch: "main",
     };
 
+    it("disables the models.dev startup fetch and autoupdate", () => {
+      // Both fetches hit Cloudflare-fronted hosts at startup with no timeout;
+      // blackholed connections hang opencode forever before the first LLM call.
+      const config = adapter.buildContainerConfig(baseInput);
+      expect(config.env.OPENCODE_DISABLE_MODELS_FETCH).toBe("1");
+      expect(config.env.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
+    });
+
     it("uses rendered prompt when available", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
