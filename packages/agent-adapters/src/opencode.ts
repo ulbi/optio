@@ -16,7 +16,79 @@ interface OpenCodeConfig {
       models: Record<string, { name: string }>;
     };
   };
+  permission?: Record<string, string | Record<string, string>>;
 }
+
+export const OPENCODE_WORKSPACE_GUARD_PLUGIN = `export const OptioWorkspaceGuard = async ({ directory, worktree }) => {
+  const workspace = directory || worktree || process.cwd();
+  const home = process.env.HOME || "/home/agent";
+  const roots = [
+    workspace.endsWith("/") ? workspace : workspace + "/",
+    home + "/.local/share/opencode/",
+    "/dev/",
+  ];
+  const HINT =
+    "Blocked: path outside the workspace. Stay inside the workspace (Im Workspace bleiben) — write temp files, caches and venvs inside the worktree (e.g. ./.tmp/) instead of /tmp or $HOME.";
+  const HOME_RE = /^(~|\\$HOME)(?=\\/|$)/;
+  const ABS_RE = /(^|[\\s'"(=])(\\/(?:[^\\s'"\\x60\\\\:,;)]|\\*|\\?)+)/g;
+
+  const expand = (p) => p.replace(HOME_RE, home);
+  const isAllowed = (p) => roots.some((r) => p.startsWith(r));
+
+  const offendingPath = (tool, args) => {
+    if (!args || typeof args !== "object") return null;
+    if (["webfetch", "websearch", "task", "skill", "lsp", "question"].includes(tool)) return null;
+    const values = Object.values(args).filter((v) => typeof v === "string");
+    for (const value of values) {
+      const candidates =
+        tool === "bash"
+          ? value.split(/[\\s;|&><()]+/).filter(Boolean)
+          : [value.trim()];
+      for (const token of candidates) {
+        const expanded = expand(token);
+        if (expanded.startsWith("/") && !roots.some((r) => expanded.startsWith(r))) return token;
+        const matches = [...expanded.matchAll(ABS_RE)].map((m) => m[2]);
+        const bad = matches.find((p) => !roots.some((r) => expand(p).startsWith(r)));
+        if (bad) return bad;
+      }
+    }
+    return null;
+  };
+
+  return {
+    "tool.execute.before": async (input, output) => {
+      const bad = offendingPath(input.tool, output.args);
+      if (bad) {
+        throw new Error(HINT + " (tool: " + input.tool + ", path: " + bad + ")");
+      }
+    },
+  };
+};
+`;
+
+export const OPENCODE_GLOBAL_AGENTS_MD = `# Optio Runtime Rules (headless, mandatory)
+
+You are a coding agent launched headless by the Optio orchestrator inside an isolated Kubernetes pod. Your current working directory is your workspace (the git worktree for this task).
+
+## Workspace confinement — absolute rules
+
+- Stay inside the workspace. Never read, write, create, or execute anything outside it.
+- Never use /tmp, /var, /usr, /opt, /etc or \$HOME paths for any file or tool call.
+- Create temporary files, caches, and virtual environments INSIDE the workspace (e.g. \`./.tmp/\`), and clean them up before finishing.
+- No sudo, no system package installs (apt-get), no global pip/npm installs. If tooling is missing, work with what is available inside the workspace.
+- When a tool call is blocked with a workspace-boundary error, do NOT retry the same external path — switch to an in-workspace path.
+
+## Headless mode
+
+- You run non-interactively (opencode run). Asking the user questions is impossible — never attempt it.
+- If something is ambiguous, state your assumption and proceed.
+- Never wait for interactive input; there is none.
+
+## Focus
+
+- Work only on the task described in the task file (.optio/task.md).
+- Commit your work to the task branch and open a PR as described in the task instructions.
+`;
 
 /**
  * OpenCode CLI (opencode run --format json) outputs NDJSON events.
@@ -84,6 +156,20 @@ export class OpenCodeAdapter implements AgentAdapter {
 
     const config: OpenCodeConfig = {
       $schema: "https://opencode.ai/config.json",
+      permission: {
+        "*": "allow",
+        question: "deny",
+        bash: {
+          "sudo *": "deny",
+          "apt *": "deny",
+          "apt-get *": "deny",
+          "dpkg *": "deny",
+        },
+        external_directory: {
+          "*": "deny",
+          "/home/agent/.local/share/opencode/**": "allow",
+        },
+      },
     };
 
     const setupFiles: AgentContainerConfig["setupFiles"] = [];
@@ -149,6 +235,16 @@ export class OpenCodeAdapter implements AgentAdapter {
     setupFiles.push({
       path: "/home/agent/.config/opencode/opencode.json",
       content: JSON.stringify(config),
+    });
+
+    setupFiles.push({
+      path: "/home/agent/.config/opencode/plugins/optio-workspace-guard.js",
+      content: OPENCODE_WORKSPACE_GUARD_PLUGIN,
+    });
+
+    setupFiles.push({
+      path: "/home/agent/.config/opencode/AGENTS.md",
+      content: OPENCODE_GLOBAL_AGENTS_MD,
     });
 
     // Write the task file into the worktree

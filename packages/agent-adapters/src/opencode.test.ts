@@ -151,6 +151,20 @@ describe("OpenCodeAdapter", () => {
       expect(configFile).toBeDefined();
       expect(JSON.parse(configFile!.content)).toEqual({
         $schema: "https://opencode.ai/config.json",
+        permission: {
+          "*": "allow",
+          question: "deny",
+          bash: {
+            "sudo *": "deny",
+            "apt *": "deny",
+            "apt-get *": "deny",
+            "dpkg *": "deny",
+          },
+          external_directory: {
+            "*": "deny",
+            "/home/agent/.local/share/opencode/**": "allow",
+          },
+        },
       });
     });
 
@@ -167,13 +181,125 @@ describe("OpenCodeAdapter", () => {
 
     it("returns only opencode config in setupFiles when no task file", () => {
       const config = adapter.buildContainerConfig(baseInput);
-      expect(config.setupFiles).toHaveLength(1);
+      expect(config.setupFiles).toHaveLength(3);
       expect(config.setupFiles![0].path).toContain("opencode.json");
+      expect(config.setupFiles!.map((f) => f.path)).toContain(
+        "/home/agent/.config/opencode/plugins/optio-workspace-guard.js",
+      );
+      expect(config.setupFiles!.map((f) => f.path)).toContain(
+        "/home/agent/.config/opencode/AGENTS.md",
+      );
     });
 
     it("uses entrypoint.sh as command", () => {
       const config = adapter.buildContainerConfig(baseInput);
       expect(config.command).toEqual(["/opt/optio/entrypoint.sh"]);
+    });
+
+    describe("workspace confinement (headless guard)", () => {
+      const readConfig = (setupFiles: { path: string; content: string }[]) => {
+        const configFile = setupFiles.find((f) =>
+          f.path.includes(".config/opencode/opencode.json"),
+        );
+        return JSON.parse(configFile!.content) as {
+          permission?: Record<string, string | Record<string, string>>;
+        };
+      };
+
+      const expectedPermission = {
+        "*": "allow",
+        question: "deny",
+        bash: {
+          "sudo *": "deny",
+          "apt *": "deny",
+          "apt-get *": "deny",
+          "dpkg *": "deny",
+        },
+        external_directory: {
+          "*": "deny",
+          "/home/agent/.local/share/opencode/**": "allow",
+        },
+      };
+
+      it("allows everything by default", () => {
+        const config = adapter.buildContainerConfig(baseInput);
+        const parsed = readConfig(config.setupFiles!);
+        expect(parsed.permission?.["*"]).toBe("allow");
+      });
+
+      it("denies the question tool so headless runs never ask", () => {
+        const config = adapter.buildContainerConfig(baseInput);
+        const parsed = readConfig(config.setupFiles!);
+        expect(parsed.permission?.["question"]).toBe("deny");
+      });
+
+      it("denies system package installs and privilege escalation via bash", () => {
+        const config = adapter.buildContainerConfig(baseInput);
+        const parsed = readConfig(config.setupFiles!);
+        expect(parsed.permission?.["bash"]).toEqual(expectedPermission.bash);
+      });
+
+      it("denies external_directory so the agent stays inside the worktree", () => {
+        const config = adapter.buildContainerConfig(baseInput);
+        const parsed = readConfig(config.setupFiles!);
+        expect(parsed.permission?.["external_directory"]).toMatchObject({ "*": "deny" });
+      });
+
+      it("keeps opencode's own tool-output directory accessible", () => {
+        const config = adapter.buildContainerConfig(baseInput);
+        const parsed = readConfig(config.setupFiles!);
+        expect(parsed.permission?.["external_directory"]).toMatchObject({
+          "/home/agent/.local/share/opencode/**": "allow",
+        });
+      });
+
+      it("ships the workspace-guard plugin as a global setup file", () => {
+        const config = adapter.buildContainerConfig(baseInput);
+        const plugin = config.setupFiles?.find(
+          (f) => f.path === "/home/agent/.config/opencode/plugins/optio-workspace-guard.js",
+        );
+        expect(plugin).toBeDefined();
+        expect(plugin!.content).toContain("tool.execute.before");
+      });
+
+      it("plugin hint tells the agent to stay inside the workspace", () => {
+        const config = adapter.buildContainerConfig(baseInput);
+        const plugin = config.setupFiles?.find(
+          (f) => f.path === "/home/agent/.config/opencode/plugins/optio-workspace-guard.js",
+        );
+        expect(plugin!.content).toContain("Im Workspace bleiben");
+      });
+
+      it("plugin blocks /tmp but allows opencode internals", () => {
+        const config = adapter.buildContainerConfig(baseInput);
+        const plugin = config.setupFiles?.find(
+          (f) => f.path === "/home/agent/.config/opencode/plugins/optio-workspace-guard.js",
+        );
+        expect(plugin!.content).toContain('"bash"');
+        expect(plugin!.content).toContain("/tmp");
+        expect(plugin!.content).toContain(".local/share/opencode");
+      });
+
+      it("ships global AGENTS.md workspace rules", () => {
+        const config = adapter.buildContainerConfig(baseInput);
+        const agents = config.setupFiles?.find(
+          (f) => f.path === "/home/agent/.config/opencode/AGENTS.md",
+        );
+        expect(agents).toBeDefined();
+        expect(agents!.content).toContain("workspace");
+        expect(agents!.content).toContain("headless");
+      });
+
+      it("writes the same guard files for litellm-based runs", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeBaseUrl: "http://litellm-proxy:4000",
+          opencodeModel: "litellm/default",
+        });
+        const paths = config.setupFiles!.map((f) => f.path);
+        expect(paths).toContain("/home/agent/.config/opencode/plugins/optio-workspace-guard.js");
+        expect(paths).toContain("/home/agent/.config/opencode/AGENTS.md");
+      });
     });
 
     describe("Native Provider (Anthropic/OpenAI/Groq)", () => {
@@ -187,6 +313,20 @@ describe("OpenCodeAdapter", () => {
         expect(configFile).toBeDefined();
         expect(JSON.parse(configFile!.content)).toEqual({
           $schema: "https://opencode.ai/config.json",
+          permission: {
+            "*": "allow",
+            question: "deny",
+            bash: {
+              "sudo *": "deny",
+              "apt *": "deny",
+              "apt-get *": "deny",
+              "dpkg *": "deny",
+            },
+            external_directory: {
+              "*": "deny",
+              "/home/agent/.local/share/opencode/**": "allow",
+            },
+          },
         });
         expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
         expect(config.env.OPENAI_API_KEY).toBeUndefined();
@@ -213,6 +353,20 @@ describe("OpenCodeAdapter", () => {
         const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
         expect(JSON.parse(configFile!.content)).toEqual({
           $schema: "https://opencode.ai/config.json",
+          permission: {
+            "*": "allow",
+            question: "deny",
+            bash: {
+              "sudo *": "deny",
+              "apt *": "deny",
+              "apt-get *": "deny",
+              "dpkg *": "deny",
+            },
+            external_directory: {
+              "*": "deny",
+              "/home/agent/.local/share/opencode/**": "allow",
+            },
+          },
         });
         expect(config.env.OPENAI_API_KEY).toBeUndefined();
         expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
@@ -249,6 +403,20 @@ describe("OpenCodeAdapter", () => {
         const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
         expect(JSON.parse(configFile!.content)).toEqual({
           $schema: "https://opencode.ai/config.json",
+          permission: {
+            "*": "allow",
+            question: "deny",
+            bash: {
+              "sudo *": "deny",
+              "apt *": "deny",
+              "apt-get *": "deny",
+              "dpkg *": "deny",
+            },
+            external_directory: {
+              "*": "deny",
+              "/home/agent/.local/share/opencode/**": "allow",
+            },
+          },
         });
         expect(config.env.GROQ_API_KEY).toBeUndefined();
         expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
@@ -290,6 +458,20 @@ describe("OpenCodeAdapter", () => {
         expect(parsedConfig).toEqual({
           $schema: "https://opencode.ai/config.json",
           model: "litellm/my-litellm-model",
+          permission: {
+            "*": "allow",
+            question: "deny",
+            bash: {
+              "sudo *": "deny",
+              "apt *": "deny",
+              "apt-get *": "deny",
+              "dpkg *": "deny",
+            },
+            external_directory: {
+              "*": "deny",
+              "/home/agent/.local/share/opencode/**": "allow",
+            },
+          },
           provider: {
             litellm: {
               npm: "@ai-sdk/openai-compatible",
