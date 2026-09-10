@@ -698,7 +698,7 @@ function ReviewStep({
               <input
                 value={testCommand}
                 onChange={(e) => setTestCommand(e.target.value)}
-                placeholder="npm test, cargo test, pytest"
+                placeholder="npm test, cargo test, pytest, dotnet test"
                 className={inputClass}
               />
               <p className="text-[10px] text-text-muted/60 mt-1">

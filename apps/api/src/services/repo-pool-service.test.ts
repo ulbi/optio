@@ -200,6 +200,11 @@ describe("resolveImage", () => {
     expect(resolveImage({ preset: "dart" })).toBe("optio-dart:latest");
   });
 
+  it("returns preset image for dotnet (no prefix env)", () => {
+    delete process.env.OPTIO_AGENT_IMAGE_PREFIX;
+    expect(resolveImage({ preset: "dotnet" })).toBe("optio-dotnet:latest");
+  });
+
   it("falls through to default for invalid preset", () => {
     delete process.env.OPTIO_AGENT_IMAGE;
     expect(resolveImage({ preset: "nonexistent" as any })).toBe("optio-agent:latest");
@@ -224,6 +229,7 @@ describe("resolveImage", () => {
     expect(resolveImage({ preset: "rust" })).toBe("ghcr.io/jonwiggins/optio-agent-rust:latest");
     expect(resolveImage({ preset: "ruby" })).toBe("ghcr.io/jonwiggins/optio-agent-ruby:latest");
     expect(resolveImage({ preset: "dart" })).toBe("ghcr.io/jonwiggins/optio-agent-dart:latest");
+    expect(resolveImage({ preset: "dotnet" })).toBe("ghcr.io/jonwiggins/optio-agent-dotnet:latest");
     expect(resolveImage({ preset: "full" })).toBe("ghcr.io/jonwiggins/optio-agent-full:latest");
     expect(resolveImage({ preset: "dind" })).toBe("ghcr.io/jonwiggins/optio-agent-dind:latest");
   });

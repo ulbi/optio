@@ -31,6 +31,16 @@ RUN curl -fsSL "https://go.dev/dl/go${GOVERSION}.linux-$(dpkg --print-architectu
 ENV PATH="/usr/local/go/bin:/home/agent/go/bin:${PATH}"
 ENV GOPATH="/home/agent/go"
 
+RUN curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0 --install-dir /usr/share/dotnet \
+    && ln -sf /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
+    && mkdir -p /home/agent/.nuget/packages && chown -R agent:agent /home/agent/.nuget
+
+ENV DOTNET_ROOT=/usr/share/dotnet
+ENV PATH="/usr/share/dotnet/bin:/usr/share/dotnet:/home/agent/.dotnet/tools:${PATH}"
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV DOTNET_NOLOGO=1
+ENV NUGET_PACKAGES=/home/agent/.nuget/packages
+
 USER agent
 
 # Rust

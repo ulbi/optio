@@ -41,11 +41,17 @@ export const PRESET_IMAGES = {
     description: "Base + Dart SDK, dart_style.",
     languages: ["dart"],
   },
+  dotnet: {
+    tag: "optio-dotnet:latest",
+    label: ".NET",
+    description: "Base + .NET SDK 8, NuGet, dotnet-format.",
+    languages: ["csharp", "fsharp"],
+  },
   full: {
     tag: "optio-full:latest",
     label: "Full",
-    description: "Everything: Node.js, Python, Go, Rust, Docker, Postgres/Redis clients.",
-    languages: ["javascript", "typescript", "python", "go", "rust"],
+    description: "Everything: Node.js, Python, Go, Rust, .NET, Docker, Postgres/Redis clients.",
+    languages: ["javascript", "typescript", "python", "go", "rust", "csharp"],
   },
   dind: {
     tag: "optio-dind:latest",

@@ -16,7 +16,8 @@
       "dependsOn": ["^build"]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "passThroughEnv": ["VITEST_MAX_FORKS", "VITEST_MAX_THREADS"]
     },
     "test:integration": {
       "dependsOn": ["^build"],

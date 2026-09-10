@@ -265,7 +265,7 @@ function DefaultReviewEditor() {
         <input
           value={reviewTestCommand}
           onChange={(e) => setReviewTestCommand(e.target.value)}
-          placeholder="npm test, cargo test, pytest"
+          placeholder="npm test, cargo test, pytest, dotnet test"
           className="w-full px-3 py-2 rounded-lg bg-bg border border-border text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
         />
       </div>

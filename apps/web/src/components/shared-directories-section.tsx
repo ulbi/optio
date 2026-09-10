@@ -87,6 +87,14 @@ const CACHE_PRESETS: CachePreset[] = [
     description: "Go module download cache",
   },
   {
+    label: "NuGet",
+    name: "nuget-cache",
+    mountLocation: "home",
+    mountSubPath: ".nuget/packages",
+    sizeGi: 20,
+    description: "NuGet package cache",
+  },
+  {
     label: "Gradle",
     name: "gradle-cache",
     mountLocation: "home",

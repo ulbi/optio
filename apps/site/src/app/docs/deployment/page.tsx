@@ -117,7 +117,7 @@ externalRedis:
         <p className="text-text-muted leading-relaxed">
           Build agent images and push them to a container registry accessible by your cluster.
         </p>
-        <CodeBlock title="terminal">{`# Build all presets (base, node, python, go, rust, full)
+        <CodeBlock title="terminal">{`# Build all presets (base, node, python, go, rust, ruby, dart, dotnet, full)
 ./images/build.sh
 
 # Tag and push to your registry
