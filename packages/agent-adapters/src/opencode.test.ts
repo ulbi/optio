@@ -54,6 +54,12 @@ describe("OpenCodeAdapter", () => {
       repoBranch: "main",
     };
 
+    it("does not set extra workaround env vars — the stdin EOF fix is the only change", () => {
+      const config = adapter.buildContainerConfig(baseInput);
+      expect(config.env.OPENCODE_DISABLE_MODELS_FETCH).toBeUndefined();
+      expect(config.env.OPENCODE_DISABLE_AUTOUPDATE).toBeUndefined();
+    });
+
     it("uses rendered prompt when available", () => {
       const config = adapter.buildContainerConfig({
         ...baseInput,
@@ -165,6 +171,225 @@ describe("OpenCodeAdapter", () => {
     it("uses entrypoint.sh as command", () => {
       const config = adapter.buildContainerConfig(baseInput);
       expect(config.command).toEqual(["/opt/optio/entrypoint.sh"]);
+    });
+
+    describe("Native Provider (Anthropic/OpenAI/Groq)", () => {
+      it("Native Anthropic: only ANTHROPIC_API_KEY set → minimal opencode.json", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeModel: undefined,
+          opencodeBaseUrl: undefined,
+        });
+        const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
+        expect(configFile).toBeDefined();
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+        expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
+        expect(config.env.OPENAI_API_KEY).toBeUndefined();
+        expect(config.requiredSecrets).toContain("ANTHROPIC_API_KEY");
+      });
+
+      it("Native Anthropic: ANTHROPIC_API_KEY + OPENCODE_DEFAULT_MODEL set", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeModel: undefined,
+          opencodeBaseUrl: undefined,
+          opencodeDefaultModel: "claude-sonnet-4",
+        });
+        expect(config.env.OPENCODE_MODEL).toBe("claude-sonnet-4");
+        expect(config.requiredSecrets).toContain("ANTHROPIC_API_KEY");
+      });
+
+      it("Native OpenAI: only OPENAI_API_KEY set", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeModel: undefined,
+          opencodeBaseUrl: undefined,
+        });
+        const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+        expect(config.env.OPENAI_API_KEY).toBeUndefined();
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+
+      it("Native OpenAI: OPENAI_API_KEY (emptystring) + OPENCODE_DEFAULT_MODEL set", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeModel: undefined,
+          opencodeBaseUrl: undefined,
+          opencodeDefaultModel: "gpt-4o",
+        });
+        expect(config.env.OPENCODE_MODEL).toBe("gpt-4o");
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+
+      it("Native OpenAI: OPENAI_API_KEY + OPENCODE_DEFAULT_MODEL set", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeModel: undefined,
+          opencodeBaseUrl: undefined,
+          opencodeDefaultModel: "gpt-4o",
+        });
+        expect(config.env.OPENCODE_MODEL).toBe("gpt-4o");
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+
+      it("Native Groq: only GROQ_API_KEY set", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeModel: undefined,
+          opencodeBaseUrl: undefined,
+        });
+        const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
+        expect(JSON.parse(configFile!.content)).toEqual({
+          $schema: "https://opencode.ai/config.json",
+        });
+        expect(config.env.GROQ_API_KEY).toBeUndefined();
+        expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
+        expect(config.env.OPENAI_API_KEY).toBeUndefined();
+      });
+
+      it("Native Groq: GROQ_API_KEY + OPENCODE_DEFAULT_MODEL set", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeModel: undefined,
+          opencodeBaseUrl: undefined,
+          opencodeDefaultModel: "llama-3.1-70b",
+        });
+        expect(config.env.OPENCODE_MODEL).toBe("llama-3.1-70b");
+      });
+
+      it("Native Anthropic: multiple provider keys set (ANTHROPIC_API_KEY + OPENAI_API_KEY)", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeModel: undefined,
+          opencodeBaseUrl: undefined,
+        });
+        expect(config.requiredSecrets).toContain("ANTHROPIC_API_KEY");
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+    });
+
+    describe("LiteLLM Provider", () => {
+      it("LiteLLM: URL + Model, WITHOUT OPENAI_API_KEY secret → placeholder key", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "litellm/my-litellm-model",
+          opencodeDefaultModel: undefined,
+        });
+        const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
+        expect(configFile).toBeDefined();
+        const parsedConfig = JSON.parse(configFile!.content);
+        expect(parsedConfig).toEqual({
+          $schema: "https://opencode.ai/config.json",
+          model: "litellm/my-litellm-model",
+          provider: {
+            litellm: {
+              npm: "@ai-sdk/openai-compatible",
+              name: "LiteLLM Proxy",
+              options: {
+                baseURL: "http://litellm-proxy.agents.svc.cluster.local:4000",
+                apiKey: "{env:OPENAI_API_KEY}",
+              },
+              models: {
+                "my-litellm-model": {
+                  name: "my-litellm-model",
+                },
+              },
+            },
+          },
+        });
+        expect(config.env.OPENAI_API_KEY).toBe("sk-no-key-required");
+        expect(config.env.OPENCODE_MODEL).toBe("litellm/my-litellm-model");
+        expect(config.env.OPENAI_BASE_URL).toBeUndefined();
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+
+      it("LiteLLM: URL + Model, WITH OPENAI_API_KEY secret", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeBaseUrl: "http://litellm-proxy.agents.svc.cluster.local:4000",
+          opencodeModel: "litellm/my-litellm-model",
+          opencodeDefaultModel: undefined,
+        });
+        const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
+        const parsedConfig = JSON.parse(configFile!.content);
+        expect(parsedConfig.provider.litellm.options.baseURL).toBe(
+          "http://litellm-proxy.agents.svc.cluster.local:4000",
+        );
+        expect(parsedConfig.provider.litellm.options.apiKey).toBe("{env:OPENAI_API_KEY}");
+        expect(parsedConfig.model).toBe("litellm/my-litellm-model");
+        expect(config.env.OPENCODE_MODEL).toBe("litellm/my-litellm-model");
+        expect(config.env.OPENAI_BASE_URL).toBeUndefined();
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+
+      it("LiteLLM: fallback to OPENCODE_DEFAULT_MODEL when opencodeModel not set", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeBaseUrl: "http://litellm-proxy:4000",
+          opencodeModel: undefined,
+          opencodeDefaultModel: "litellm/litellm-default-model",
+        });
+        const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
+        const parsedConfig = JSON.parse(configFile!.content);
+        expect(parsedConfig.model).toBe("litellm/litellm-default-model");
+        expect(parsedConfig.provider.litellm.models).toEqual({
+          "litellm-default-model": { name: "litellm-default-model" },
+        });
+        expect(config.env.OPENCODE_MODEL).toBe("litellm/litellm-default-model");
+      });
+
+      it("LiteLLM: opencodeModel wins over OPENCODE_DEFAULT_MODEL when both set", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeBaseUrl: "http://litellm-proxy:4000",
+          opencodeModel: "litellm/repo-specific-model",
+          opencodeDefaultModel: "global-secret-model",
+        });
+        const configFile = config.setupFiles!.find((f) => f.path.includes("opencode.json"));
+        const parsedConfig = JSON.parse(configFile!.content);
+        expect(parsedConfig.model).toBe("litellm/repo-specific-model");
+        expect(parsedConfig.provider.litellm.models).toEqual({
+          "repo-specific-model": { name: "repo-specific-model" },
+        });
+        expect(config.env.OPENCODE_MODEL).toBe("litellm/repo-specific-model");
+      });
+    });
+
+    describe("Native Provider: Model Priority", () => {
+      it("Native: opencodeModel wins over OPENCODE_DEFAULT_MODEL when both set", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeModel: "anthropic/claude-opus-4",
+          opencodeDefaultModel: "claude-sonnet-4",
+        });
+        expect(config.env.OPENCODE_MODEL).toBe("anthropic/claude-opus-4");
+        expect(config.env.OPTIO_OPENCODE_MODEL).toBe("anthropic/claude-opus-4");
+      });
+    });
+
+    describe("Secret Injection Verification", () => {
+      it("OPENAI_API_KEY secret resolves to container env var", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeBaseUrl: "http://litellm-proxy:4000/v1",
+          opencodeModel: "litellm/test-model",
+        });
+        expect(config.requiredSecrets).toContain("OPENAI_API_KEY");
+      });
+
+      it("Missing OPENAI_API_KEY secret results in fallback placeholder", () => {
+        const config = adapter.buildContainerConfig({
+          ...baseInput,
+          opencodeBaseUrl: "http://litellm-proxy:4000/v1",
+        });
+        expect(config.env.OPENAI_API_KEY).toBe("sk-no-key-required");
+      });
     });
   });
 
