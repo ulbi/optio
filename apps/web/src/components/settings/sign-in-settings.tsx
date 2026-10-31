@@ -32,6 +32,12 @@ import {
   SkeletonCard,
 } from "@/components/settings/settings-ui";
 import { cn } from "@/lib/utils";
+import { AdditionalOAuthForm } from "./additional-oauth-form";
+import { OidcForm } from "./oidc-sign-in-form";
+import { SamlForm } from "./saml-sign-in-form";
+import { LdapForm } from "./ldap-sign-in-form";
+import { LdapLoginForm } from "@/components/ldap-login-form";
+import type { PublicSignInProvider } from "@optio/shared";
 
 /**
  * How everyone signs in — the Settings → Access → Sign-in card and the setup
@@ -178,7 +184,7 @@ function GoogleForm({
         <div className="sm:col-span-2">
           <CopyField
             label="Redirect URI to register in Google Cloud Console"
-            value={provider.callbackUrl}
+            value={provider.callbackUrl ?? ""}
           />
           <p className={HELP}>
             Create an OAuth client (Web application) in the Google Cloud Console, add this URI under
@@ -413,6 +419,7 @@ export function SignInSetupForm({
   onBootstrapChange?: (bootstrap: boolean) => void;
 }) {
   const { user, userId, authDisabled, loaded } = useCurrentUser();
+  const [ldapPending, setLdapPending] = useState<PublicSignInProvider | null>(null);
   const [config, setConfig] = useState<SignInConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [setupToken, setSetupToken] = useState("");
@@ -450,7 +457,21 @@ export function SignInSetupForm({
   }
 
   const google = config.providers.find((p) => p.provider === "google")!;
-  const others = config.providers.filter((p) => p.provider !== "google");
+  const oidc = config.providers.find((p) => p.provider === "oidc");
+  const saml = config.providers.find((p) => p.provider === "saml");
+  const ldap = config.providers.find((p) => p.provider === "ldap");
+  const additional = config.providers.filter(
+    (p) => p.provider === "gitea" || p.provider === "bitbucket",
+  );
+  const others = config.providers.filter(
+    (p) =>
+      p.provider !== "google" &&
+      p.provider !== "oidc" &&
+      p.provider !== "saml" &&
+      p.provider !== "gitea" &&
+      p.provider !== "bitbucket" &&
+      p.provider !== "ldap",
+  );
   const canEdit = config.canEdit || (config.bootstrap && setupToken.trim().length > 0);
 
   return (
@@ -476,8 +497,8 @@ export function SignInSetupForm({
             <div>
               <p className="font-medium">Nobody can sign in yet</p>
               <p className="text-xs text-text-muted mt-0.5">
-                Configure your organization's Google sign-in below. The one-time setup token unlocks
-                it: the API prints it in its log —{" "}
+                Configure your organization's Google or OpenID Connect sign-in below. The one-time
+                setup token unlocks it: the API prints it in its log —{" "}
                 <code className="px-1 py-0.5 bg-bg rounded font-mono text-[11px]">
                   kubectl logs deploy/optio-api -n optio | grep &quot;setup token&quot;
                 </code>{" "}
@@ -582,6 +603,144 @@ export function SignInSetupForm({
         )}
       </div>
 
+      {oidc && (
+        <section className="space-y-3" aria-label="OpenID Connect sign-in">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">SSO (OpenID Connect)</h3>
+            <Status p={oidc} />
+          </div>
+          {canEdit ? (
+            <OidcForm
+              key={oidc.updatedAt ?? "new"}
+              view={oidc}
+              config={config}
+              mode={mode}
+              onRemoved={() => void load()}
+              setupToken={setupToken}
+              onSaved={(view, bootstrap) => {
+                setConfig((old) =>
+                  old
+                    ? {
+                        ...old,
+                        bootstrap,
+                        providers: old.providers.map((p) => (p.provider === "oidc" ? view : p)),
+                      }
+                    : old,
+                );
+                onBootstrapChange?.(bootstrap);
+              }}
+            />
+          ) : (
+            <p className={HELP}>Only a deployment admin can change OpenID Connect settings.</p>
+          )}
+        </section>
+      )}
+      {saml && (
+        <section className="space-y-3" aria-label="SAML sign-in">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">SSO (SAML 2.0)</h3>
+            <Status p={saml} />
+          </div>
+          {canEdit ? (
+            <SamlForm
+              key={saml.updatedAt ?? "new"}
+              view={saml}
+              config={config}
+              mode={mode}
+              setupToken={setupToken}
+              onRemoved={() => void load()}
+              onSaved={(view, bootstrap) => {
+                setConfig((old) =>
+                  old
+                    ? {
+                        ...old,
+                        bootstrap,
+                        providers: old.providers.map((p) => (p.provider === "saml" ? view : p)),
+                      }
+                    : old,
+                );
+                onBootstrapChange?.(bootstrap);
+              }}
+            />
+          ) : (
+            <p className={HELP}>Only a deployment admin can change SAML settings.</p>
+          )}
+        </section>
+      )}
+      {ldap && (
+        <section className="space-y-3" aria-label="LDAP sign-in">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">LDAP / Active Directory</h3>
+            <Status p={ldap} />
+          </div>
+          {canEdit ? (
+            <LdapForm
+              key={ldap.updatedAt ?? "new"}
+              view={ldap}
+              config={config}
+              mode={mode}
+              onRemoved={() => void load()}
+              setupToken={setupToken}
+              onSignIn={setLdapPending}
+              onSaved={(view, bootstrap) => {
+                setConfig((old) =>
+                  old
+                    ? {
+                        ...old,
+                        bootstrap,
+                        providers: old.providers.map((p) => (p.provider === "ldap" ? view : p)),
+                      }
+                    : old,
+                );
+                onBootstrapChange?.(bootstrap);
+              }}
+            />
+          ) : (
+            <p className={HELP}>Only a deployment admin can change LDAP settings.</p>
+          )}
+          {ldapPending && <LdapLoginForm provider={ldapPending} />}
+        </section>
+      )}
+      {additional.map((provider) => (
+        <section
+          key={provider.provider}
+          className="space-y-3"
+          aria-label={`${provider.displayName} sign-in`}
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">
+              {provider.provider === "gitea" ? "Gitea / Forgejo" : "Bitbucket"}
+            </h3>
+            <Status p={provider} />
+          </div>
+          {canEdit ? (
+            <AdditionalOAuthForm
+              key={provider.updatedAt ?? "new"}
+              view={provider}
+              config={config}
+              mode={mode}
+              setupToken={setupToken}
+              onRemoved={() => void load()}
+              onSaved={(view, bootstrap) => {
+                setConfig((old) =>
+                  old
+                    ? {
+                        ...old,
+                        bootstrap,
+                        providers: old.providers.map((p) =>
+                          p.provider === view.provider ? view : p,
+                        ),
+                      }
+                    : old,
+                );
+                onBootstrapChange?.(bootstrap);
+              }}
+            />
+          ) : (
+            <p className={HELP}>Only a deployment admin can change sign-in settings.</p>
+          )}
+        </section>
+      ))}
       {/* Other providers: environment-configured, read-only here */}
       <ul className={LIST}>
         {others.map((p) => {

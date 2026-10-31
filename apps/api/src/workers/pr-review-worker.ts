@@ -60,7 +60,6 @@ import {
 import { RunOutputDigest } from "../services/run-output-digest.js";
 import { runHome } from "../utils/harness-config.js";
 import { resolveSecretsForTask, retrieveSecretWithFallback } from "../services/secret-service.js";
-import { isGitHubAppConfigured } from "../services/github-app-service.js";
 import { publishEvent } from "../services/event-bus.js";
 import { getBullMQOptions } from "../services/redis-config.js";
 import { instrumentWorkerProcessor } from "../telemetry/instrument-worker.js";
@@ -70,7 +69,7 @@ import { enqueueReconcile } from "../services/reconcile-queue.js";
 import { resolveReviewConfig } from "../services/review-config.js";
 import * as optioSettingsService from "../services/optio-settings-service.js";
 import { buildAgentEnvironment } from "../services/agent-environment-service.js";
-import { applyGitAccess } from "../services/git-access-env.js";
+import { applyGitAccess, requiredGitTokenSecret } from "../services/git-access-env.js";
 import { buildInitialClaudeStreamMessage } from "../services/pooled-agent-command.js";
 import { buildAgentCommand } from "./task-worker.js";
 
@@ -247,11 +246,8 @@ export function startPrReviewWorker() {
           (run.metadata as {
             taskFileContent?: string;
             taskFilePath?: string;
-            // Newer field — agent-agnostic. Supersedes claudeModel.
+            // Agent-agnostic model field.
             model?: string;
-            // Legacy field — left in place for one release while in-flight
-            // jobs queued before the agent-aware review change drain.
-            claudeModel?: string;
           } | null) ?? {};
 
         const renderedPrompt = run.prompt ?? "";
@@ -272,7 +268,7 @@ export function startPrReviewWorker() {
         const resolvedReview = resolveReviewConfig({
           repoReviewAgentType: repoConfig.reviewAgentType ?? null,
           repoDefaultAgentType: repoConfig.defaultAgentType ?? null,
-          repoReviewModel: metadata.model ?? metadata.claudeModel ?? repoConfig.reviewModel ?? null,
+          repoReviewModel: metadata.model ?? repoConfig.reviewModel ?? null,
           globalDefaultReviewAgentType: globalSettings?.defaultReviewAgentType ?? null,
           globalDefaultReviewModel: globalSettings?.defaultReviewModel ?? null,
         });
@@ -409,11 +405,9 @@ export function startPrReviewWorker() {
         );
 
         // ── Secrets ───────────────────────────────────────────────
+        const gitToken = requiredGitTokenSecret(parsedRepo?.platform);
         const secretNames = [
-          ...new Set([
-            ...agentConfig.requiredSecrets,
-            ...(!isGitHubAppConfigured() ? ["GITHUB_TOKEN"] : []),
-          ]),
+          ...new Set([...agentConfig.requiredSecrets, ...(gitToken ? [gitToken] : [])]),
         ];
         const resolvedSecrets = await resolveSecretsForTask(
           secretNames,

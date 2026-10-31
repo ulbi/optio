@@ -9,12 +9,14 @@ export * from "./types/agent-events.js";
 export * from "./utils/state-machine.js";
 export * from "./utils/normalize-repo-url.js";
 export * from "./utils/extract-work-links.js";
+export * from "./utils/work-link-status.js";
 export * from "./utils/agent-usage.js";
 export * from "./utils/transcript-source.js";
 export * from "./utils/dag.js";
 export * from "./utils/k8s-resources.js";
 export * from "./constants.js";
 export * from "./prompt-template.js";
+export * from "./work-traceability.js";
 export * from "./types/image.js";
 export * from "./error-classifier.js";
 export * from "./types/session.js";
@@ -26,6 +28,7 @@ export * from "./types/optio-settings.js";
 export * from "./types/optio-action.js";
 export * from "./types/git-platform.js";
 export * from "./utils/parse-repo-url.js";
+export * from "./utils/change-request.js";
 export * from "./utils/is-stalled.js";
 export * from "./utils/error-message.js";
 export * from "./utils/parse-int-env.js";
@@ -55,9 +58,16 @@ export * from "./types/config.js";
 export * from "./config/manifest.js";
 export * from "./config/inline.js";
 export * from "./config/stable.js";
+// What this deployment offers: the feature lists (docs/feature-lists.md).
+export * from "./config/features.js";
 
 export * from "./usage/index.js";
 
 export * from "./controller-tools.js";
 
 export * from "./utils/session-work-links.js";
+
+export * from "./types/sign-in.js";
+export * from "./utils/body-pattern.js";
+
+export { changeRequestAbbrev, isMergeRequest } from "./utils/change-request.js";

@@ -46,25 +46,13 @@ OTEL_EXPORTER_OTLP_ENDPOINT=https://your-backend:4318
 
 ### Custom Spans
 
-| Span name                          | Description                                                 |
-| ---------------------------------- | ----------------------------------------------------------- |
-| `task.lifecycle`                   | Root span for a task execution attempt (queued to terminal) |
-| `task.dependency_check`            | Dependency resolution before task start                     |
-| `task.provision.pod_get_or_create` | Pod scheduling and provisioning                             |
-| `task.provision.pod_wait_ready`    | Waiting for pod to become ready                             |
-| `task.exec.start`                  | Agent process startup                                       |
-| `task.exec.stream`                 | Agent output streaming                                      |
-| `task.parse_result`                | Result parsing and cost extraction                          |
-| `task.cleanup`                     | Worktree cleanup                                            |
-| `pr_watch.cycle`                   | One complete PR watcher polling cycle                       |
-| `pr_watch.task`                    | Per-task PR status check                                    |
-| `k8s.pod.create`                   | Kubernetes pod creation                                     |
-| `k8s.pod.exec`                     | Command execution in pod                                    |
-| `k8s.pod.delete`                   | Pod deletion                                                |
-| `repo_cleanup.cycle`               | Repo cleanup worker cycle                                   |
-| `webhook.deliver`                  | Webhook delivery attempt                                    |
-| `schedule.check_cycle`             | Schedule worker check cycle                                 |
-| `ticket_sync.cycle`                | Ticket sync worker cycle                                    |
+| Span name                | Description                                                   |
+| ------------------------ | ------------------------------------------------------------- |
+| `<worker>.process`       | One job of a BullMQ worker (`telemetry/instrument-worker.ts`) |
+| `k8s.pod.get_or_create`  | Pod scheduling and provisioning                               |
+| `k8s.pod.startRun`       | Starting an agent run in a pod                                |
+| `reconcile.decision`     | One reconciler pass over a run                                |
+| `reconcile.resync.sweep` | The reconciler's periodic resync sweep                        |
 
 ### Custom Metrics
 
@@ -218,3 +206,5 @@ This avoids duplicating all pino output through OTel while still getting trace-c
 - **Missing auth headers**: Ensure `OTEL_EXPORTER_OTLP_HEADERS` is formatted as `key=value,key=value` (no spaces around `=`).
 - **High memory usage**: Reduce `OPTIO_OTEL_SAMPLING_RATIO` to `0.1` for high-volume deployments.
 - **Spans not correlating**: Verify trace context propagation by checking for `traceparent` headers in outbound requests.
+
+For an optional Prometheus listener without an OTLP collector, plus Helm ServiceMonitor, alerts and Grafana dashboard configuration, see [Prometheus monitoring](prometheus.md). It is disabled by default and uses a separate listener with an explicit monitoring audience.

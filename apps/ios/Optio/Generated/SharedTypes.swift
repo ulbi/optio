@@ -708,7 +708,6 @@ public struct AgentContainerConfig: Codable, Hashable, Sendable {
         }
     }
 
-    public let command: [String]
     public let env: [String: String]
     public let requiredSecrets: [String]
     public let image: String?
@@ -720,7 +719,6 @@ public struct AgentContainerConfig: Codable, Hashable, Sendable {
     public let setupFiles: [SetupFile]?
 
     private enum CodingKeys: String, CodingKey {
-        case command = "command"
         case env = "env"
         case requiredSecrets = "requiredSecrets"
         case image = "image"
@@ -728,13 +726,11 @@ public struct AgentContainerConfig: Codable, Hashable, Sendable {
     }
 
     public init(
-        command: [String],
         env: [String: String],
         requiredSecrets: [String],
         image: String? = nil,
         setupFiles: [SetupFile]? = nil
     ) {
-        self.command = command
         self.env = env
         self.requiredSecrets = requiredSecrets
         self.image = image
@@ -3609,6 +3605,84 @@ public struct RepoContent: Codable, Hashable, Sendable {
     }
 }
 
+/// A repository the platform credentials can reach, as the "Add repository"
+/// picker lists it (`GitPlatform.browseRepositories`).
+public struct BrowsableRepository: Codable, Hashable, Sendable {
+    /// `owner/name` (GitLab: the project's full path, groups included).
+    public let fullName: String
+    public let cloneUrl: String
+    public let htmlUrl: String
+    public let defaultBranch: String
+    public let isPrivate: Bool
+    public let description: String?
+    /// When it last changed (GitHub: last push; GitLab: last activity).
+    public let pushedAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case fullName = "fullName"
+        case cloneUrl = "cloneUrl"
+        case htmlUrl = "htmlUrl"
+        case defaultBranch = "defaultBranch"
+        case isPrivate = "isPrivate"
+        case description = "description"
+        case pushedAt = "pushedAt"
+    }
+
+    public init(
+        fullName: String,
+        cloneUrl: String,
+        htmlUrl: String,
+        defaultBranch: String,
+        isPrivate: Bool,
+        description: String? = nil,
+        pushedAt: String? = nil
+    ) {
+        self.fullName = fullName
+        self.cloneUrl = cloneUrl
+        self.htmlUrl = htmlUrl
+        self.defaultBranch = defaultBranch
+        self.isPrivate = isPrivate
+        self.description = description
+        self.pushedAt = pushedAt
+    }
+}
+
+/// Where on a platform `browseRepositories` looks: its host and its API root.
+public struct PlatformLocation: Codable, Hashable, Sendable {
+    public let host: String
+    public let apiBaseUrl: String
+
+    private enum CodingKeys: String, CodingKey {
+        case host = "host"
+        case apiBaseUrl = "apiBaseUrl"
+    }
+
+    public init(host: String, apiBaseUrl: String) {
+        self.host = host
+        self.apiBaseUrl = apiBaseUrl
+    }
+}
+
+/// A branch of a repository, as the branch pickers list them.
+public struct Branch: Codable, Hashable, Sendable {
+    public let name: String
+    /// The repository's default branch (what `getRepoMetadata` reports).
+    public let `default`: Bool
+    public let protected: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case name = "name"
+        case `default` = "default"
+        case protected = "protected"
+    }
+
+    public init(name: String, `default`: Bool, protected: Bool? = nil) {
+        self.name = name
+        self.`default` = `default`
+        self.protected = protected
+    }
+}
+
 // MARK: - image.ts
 
 public enum PresetImageId: String, Codable, Hashable, Sendable, CaseIterable {
@@ -4393,6 +4467,13 @@ public struct LocalTerminal: Codable, Hashable, Sendable {
     /// The agent CLI's own session id (Claude Code `session_id` from hooks).
     /// Lets an exited run be resumed as an interactive chat.
     public let agentSessionId: String?
+    /// The session this one resumed (`POST /resume`), when it is a resume. A
+    /// resume keeps its original's `spawnedBy`, trigger and ticket, so its
+    /// badge is the original's.
+    public let resumedFromTerminalId: String?
+    /// The resume that continues this session, once one exists: session lists
+    /// show that one in this one's place (the latest of a chain).
+    public let resumedByTerminalId: String?
     /// The Job run (`workflow_runs.id`) this terminal executes, for `spawnedBy: "job"`.
     public let workflowRunId: String?
     /// The Repo Task (`tasks.id`) this terminal executes, for `spawnedBy: "task"`.
@@ -4440,6 +4521,8 @@ public struct LocalTerminal: Codable, Hashable, Sendable {
         case ticketExternalId = "ticketExternalId"
         case ticketUrl = "ticketUrl"
         case agentSessionId = "agentSessionId"
+        case resumedFromTerminalId = "resumedFromTerminalId"
+        case resumedByTerminalId = "resumedByTerminalId"
         case workflowRunId = "workflowRunId"
         case taskId = "taskId"
         case preview = "preview"
@@ -4480,6 +4563,8 @@ public struct LocalTerminal: Codable, Hashable, Sendable {
         ticketExternalId: String? = nil,
         ticketUrl: String? = nil,
         agentSessionId: String? = nil,
+        resumedFromTerminalId: String? = nil,
+        resumedByTerminalId: String? = nil,
         workflowRunId: String? = nil,
         taskId: String? = nil,
         preview: String? = nil,
@@ -4518,6 +4603,8 @@ public struct LocalTerminal: Codable, Hashable, Sendable {
         self.ticketExternalId = ticketExternalId
         self.ticketUrl = ticketUrl
         self.agentSessionId = agentSessionId
+        self.resumedFromTerminalId = resumedFromTerminalId
+        self.resumedByTerminalId = resumedByTerminalId
         self.workflowRunId = workflowRunId
         self.taskId = taskId
         self.preview = preview
@@ -8497,6 +8584,596 @@ public struct SessionChatEvent: Codable, Hashable, Sendable {
     }
 }
 
+// MARK: - sign-in.ts
+
+public enum OidcPreset: String, Codable, Hashable, Sendable, CaseIterable {
+    case adfs = "adfs"
+    case auth0 = "auth0"
+    case authelia = "authelia"
+    case authentik = "authentik"
+    case entra = "entra"
+    case generic = "generic"
+    case keycloak = "keycloak"
+    case okta = "okta"
+    case zitadel = "zitadel"
+    /// Fallback for raw values this client does not know about yet.
+    case unknown = "__unknown__"
+
+    public static let allCases: [OidcPreset] = [.adfs, .auth0, .authelia, .authentik, .entra, .generic, .keycloak, .okta, .zitadel]
+
+    public init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = OidcPreset(rawValue: raw) ?? .unknown
+    }
+}
+
+public struct OidcSettings: Codable, Hashable, Sendable {
+    public enum TokenAuthMethod: String, Codable, Hashable, Sendable, CaseIterable {
+        case clientSecretPost = "client_secret_post"
+        case clientSecretBasic = "client_secret_basic"
+        /// Fallback for raw values this client does not know about yet.
+        case unknown = "__unknown__"
+
+        public static let allCases: [TokenAuthMethod] = [.clientSecretPost, .clientSecretBasic]
+
+        public init(from decoder: any Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = TokenAuthMethod(rawValue: raw) ?? .unknown
+        }
+    }
+
+    /// Link only a unique, provider-verified email; disabled by default.
+    public let linkByEmail: Bool?
+    public let preset: OidcPreset?
+    /// The issuer: `<issuerUrl>/.well-known/openid-configuration` must exist.
+    public let issuerUrl: String
+    /// Space-separated; default "openid profile email" plus the preset's groups scope.
+    public let scopes: String?
+    /// The claim that carries the person's groups (default "groups").
+    public let groupsClaim: String?
+    /// Claims used for the account (defaults: email, name, preferred_username).
+    public let emailClaim: String?
+    public let nameClaim: String?
+    public let usernameClaim: String?
+    /// Treat the email as verified when the provider sends no `email_verified`
+    /// claim (default false). An explicit
+    /// `email_verified: false` is never overridden, and it never links an
+    /// account to another by email.
+    public let trustEmail: Bool?
+    /// PKCE (S256) on the authorization request (default true when set up in
+    /// the app; the environment's OIDC uses it with `OIDC_USE_PKCE=true`).
+    public let usePkce: Bool?
+    /// How the client secret is sent to the token endpoint (default post).
+    public let tokenAuthMethod: TokenAuthMethod?
+    /// PEM bundle of the CA that signed the provider's certificate, when it's a private one.
+    public let caPem: String?
+    /// Skip certificate verification (test labs only).
+    public let insecureSkipVerify: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case linkByEmail = "linkByEmail"
+        case preset = "preset"
+        case issuerUrl = "issuerUrl"
+        case scopes = "scopes"
+        case groupsClaim = "groupsClaim"
+        case emailClaim = "emailClaim"
+        case nameClaim = "nameClaim"
+        case usernameClaim = "usernameClaim"
+        case trustEmail = "trustEmail"
+        case usePkce = "usePkce"
+        case tokenAuthMethod = "tokenAuthMethod"
+        case caPem = "caPem"
+        case insecureSkipVerify = "insecureSkipVerify"
+    }
+
+    public init(
+        linkByEmail: Bool? = nil,
+        preset: OidcPreset? = nil,
+        issuerUrl: String,
+        scopes: String? = nil,
+        groupsClaim: String? = nil,
+        emailClaim: String? = nil,
+        nameClaim: String? = nil,
+        usernameClaim: String? = nil,
+        trustEmail: Bool? = nil,
+        usePkce: Bool? = nil,
+        tokenAuthMethod: TokenAuthMethod? = nil,
+        caPem: String? = nil,
+        insecureSkipVerify: Bool? = nil
+    ) {
+        self.linkByEmail = linkByEmail
+        self.preset = preset
+        self.issuerUrl = issuerUrl
+        self.scopes = scopes
+        self.groupsClaim = groupsClaim
+        self.emailClaim = emailClaim
+        self.nameClaim = nameClaim
+        self.usernameClaim = usernameClaim
+        self.trustEmail = trustEmail
+        self.usePkce = usePkce
+        self.tokenAuthMethod = tokenAuthMethod
+        self.caPem = caPem
+        self.insecureSkipVerify = insecureSkipVerify
+    }
+}
+
+public struct SignInProviderTestResult: Codable, Hashable, Sendable {
+    public struct Saml: Codable, Hashable, Sendable {
+        public struct Certificate: Codable, Hashable, Sendable {
+            public let subject: String
+            public let notAfter: String
+            public let fingerprint256: String
+
+            private enum CodingKeys: String, CodingKey {
+                case subject = "subject"
+                case notAfter = "notAfter"
+                case fingerprint256 = "fingerprint256"
+            }
+
+            public init(subject: String, notAfter: String, fingerprint256: String) {
+                self.subject = subject
+                self.notAfter = notAfter
+                self.fingerprint256 = fingerprint256
+            }
+        }
+
+        public let entityId: String?
+        public let entryPoint: String?
+        /// The signing certificates: subject and expiry, never the key.
+        public let certificates: [Certificate]
+
+        private enum CodingKeys: String, CodingKey {
+            case entityId = "entityId"
+            case entryPoint = "entryPoint"
+            case certificates = "certificates"
+        }
+
+        public init(entityId: String? = nil, entryPoint: String? = nil, certificates: [Certificate]) {
+            self.entityId = entityId
+            self.entryPoint = entryPoint
+            self.certificates = certificates
+        }
+    }
+
+    public struct Oidc: Codable, Hashable, Sendable {
+        public let issuer: String
+        public let authorizationEndpoint: String
+        public let tokenEndpoint: String
+        public let userinfoEndpoint: String?
+        public let jwksUri: String
+        public let scopesSupported: [String]
+        public let claimsSupported: [String]
+        /// Whether the configured groups claim is advertised (null when the server lists no claims).
+        public let groupsClaimAdvertised: Bool?
+        public let pkceSupported: Bool?
+
+        private enum CodingKeys: String, CodingKey {
+            case issuer = "issuer"
+            case authorizationEndpoint = "authorizationEndpoint"
+            case tokenEndpoint = "tokenEndpoint"
+            case userinfoEndpoint = "userinfoEndpoint"
+            case jwksUri = "jwksUri"
+            case scopesSupported = "scopesSupported"
+            case claimsSupported = "claimsSupported"
+            case groupsClaimAdvertised = "groupsClaimAdvertised"
+            case pkceSupported = "pkceSupported"
+        }
+
+        public init(
+            issuer: String,
+            authorizationEndpoint: String,
+            tokenEndpoint: String,
+            userinfoEndpoint: String? = nil,
+            jwksUri: String,
+            scopesSupported: [String],
+            claimsSupported: [String],
+            groupsClaimAdvertised: Bool? = nil,
+            pkceSupported: Bool? = nil
+        ) {
+            self.issuer = issuer
+            self.authorizationEndpoint = authorizationEndpoint
+            self.tokenEndpoint = tokenEndpoint
+            self.userinfoEndpoint = userinfoEndpoint
+            self.jwksUri = jwksUri
+            self.scopesSupported = scopesSupported
+            self.claimsSupported = claimsSupported
+            self.groupsClaimAdvertised = groupsClaimAdvertised
+            self.pkceSupported = pkceSupported
+        }
+    }
+
+    public struct Ldap: Codable, Hashable, Sendable {
+        public struct ServerInfo: Codable, Hashable, Sendable {
+            public let vendor: String?
+            public let namingContexts: [String]?
+
+            private enum CodingKeys: String, CodingKey {
+                case vendor = "vendor"
+                case namingContexts = "namingContexts"
+            }
+
+            public init(vendor: String? = nil, namingContexts: [String]? = nil) {
+                self.vendor = vendor
+                self.namingContexts = namingContexts
+            }
+        }
+
+        public struct Sample: Codable, Hashable, Sendable {
+            public let dn: String
+            public let username: String
+            public let email: String
+            public let displayName: String
+            public let groups: [String]
+
+            private enum CodingKeys: String, CodingKey {
+                case dn = "dn"
+                case username = "username"
+                case email = "email"
+                case displayName = "displayName"
+                case groups = "groups"
+            }
+
+            public init(
+                dn: String,
+                username: String,
+                email: String,
+                displayName: String,
+                groups: [String]
+            ) {
+                self.dn = dn
+                self.username = username
+                self.email = email
+                self.displayName = displayName
+                self.groups = groups
+            }
+        }
+
+        public let boundAs: String?
+        public let serverInfo: ServerInfo?
+        public let sample: Sample?
+
+        private enum CodingKeys: String, CodingKey {
+            case boundAs = "boundAs"
+            case serverInfo = "serverInfo"
+            case sample = "sample"
+        }
+
+        public init(boundAs: String? = nil, serverInfo: ServerInfo? = nil, sample: Sample? = nil) {
+            self.boundAs = boundAs
+            self.serverInfo = serverInfo
+            self.sample = sample
+        }
+    }
+
+    /// SAML: what the metadata (or the settings) say about the identity provider.
+    public let saml: Saml?
+    public let ok: Bool
+    public let error: String?
+    /// OIDC: what discovery found.
+    public let oidc: Oidc?
+    /// LDAP: what a bind and a sample search found.
+    public let ldap: Ldap?
+
+    private enum CodingKeys: String, CodingKey {
+        case saml = "saml"
+        case ok = "ok"
+        case error = "error"
+        case oidc = "oidc"
+        case ldap = "ldap"
+    }
+
+    public init(
+        saml: Saml? = nil,
+        ok: Bool,
+        error: String? = nil,
+        oidc: Oidc? = nil,
+        ldap: Ldap? = nil
+    ) {
+        self.saml = saml
+        self.ok = ok
+        self.error = error
+        self.oidc = oidc
+        self.ldap = ldap
+    }
+}
+
+public struct LdapSignInSettings: Codable, Hashable, Sendable {
+    public enum GroupMode: String, Codable, Hashable, Sendable, CaseIterable {
+        case memberOf = "memberOf"
+        case search = "search"
+        /// Fallback for raw values this client does not know about yet.
+        case unknown = "__unknown__"
+
+        public static let allCases: [GroupMode] = [.memberOf, .search]
+
+        public init(from decoder: any Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = GroupMode(rawValue: raw) ?? .unknown
+        }
+    }
+
+    /// A provider-verified unique email may link to an existing account; disabled by default.
+    public let linkByEmail: Bool?
+    /// ldap:// or ldaps:// URL, e.g. ldaps://ad.example.com:636
+    public let url: String
+    /// Upgrade a plain ldap:// connection with STARTTLS before binding.
+    public let startTls: Bool?
+    public let caPem: String?
+    public let insecureSkipVerify: Bool?
+    /// Service account for the search bind; empty = anonymous bind. Its password is stored sealed.
+    public let bindDn: String?
+    /// Where users live, e.g. OU=People,DC=example,DC=com
+    public let userBaseDn: String
+    /// Filter with a {{username}} placeholder. Default matches sAMAccountName, uid or mail.
+    public let userFilter: String?
+    public let usernameAttribute: String?
+    public let emailAttribute: String?
+    public let displayNameAttribute: String?
+    /// "memberOf" (the attribute on the user, default) or "search" (a group search).
+    public let groupMode: GroupMode?
+    public let groupBaseDn: String?
+    /// For groupMode "search": filter with {{dn}} / {{username}} placeholders.
+    public let groupFilter: String?
+    /// Shown above the username field ("Corporate account").
+    public let usernameLabel: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case linkByEmail = "linkByEmail"
+        case url = "url"
+        case startTls = "startTls"
+        case caPem = "caPem"
+        case insecureSkipVerify = "insecureSkipVerify"
+        case bindDn = "bindDn"
+        case userBaseDn = "userBaseDn"
+        case userFilter = "userFilter"
+        case usernameAttribute = "usernameAttribute"
+        case emailAttribute = "emailAttribute"
+        case displayNameAttribute = "displayNameAttribute"
+        case groupMode = "groupMode"
+        case groupBaseDn = "groupBaseDn"
+        case groupFilter = "groupFilter"
+        case usernameLabel = "usernameLabel"
+    }
+
+    public init(
+        linkByEmail: Bool? = nil,
+        url: String,
+        startTls: Bool? = nil,
+        caPem: String? = nil,
+        insecureSkipVerify: Bool? = nil,
+        bindDn: String? = nil,
+        userBaseDn: String,
+        userFilter: String? = nil,
+        usernameAttribute: String? = nil,
+        emailAttribute: String? = nil,
+        displayNameAttribute: String? = nil,
+        groupMode: GroupMode? = nil,
+        groupBaseDn: String? = nil,
+        groupFilter: String? = nil,
+        usernameLabel: String? = nil
+    ) {
+        self.linkByEmail = linkByEmail
+        self.url = url
+        self.startTls = startTls
+        self.caPem = caPem
+        self.insecureSkipVerify = insecureSkipVerify
+        self.bindDn = bindDn
+        self.userBaseDn = userBaseDn
+        self.userFilter = userFilter
+        self.usernameAttribute = usernameAttribute
+        self.emailAttribute = emailAttribute
+        self.displayNameAttribute = displayNameAttribute
+        self.groupMode = groupMode
+        self.groupBaseDn = groupBaseDn
+        self.groupFilter = groupFilter
+        self.usernameLabel = usernameLabel
+    }
+}
+
+public struct PublicSignInProvider: Codable, Hashable, Sendable {
+    public enum Name: String, Codable, Hashable, Sendable, CaseIterable {
+        case google = "google"
+        case github = "github"
+        case gitlab = "gitlab"
+        case oidc = "oidc"
+        case saml = "saml"
+        case gitea = "gitea"
+        case bitbucket = "bitbucket"
+        case ldap = "ldap"
+        /// Fallback for raw values this client does not know about yet.
+        case unknown = "__unknown__"
+
+        public static let allCases: [Name] = [.google, .github, .gitlab, .oidc, .saml, .gitea, .bitbucket, .ldap]
+
+        public init(from decoder: any Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = Name(rawValue: raw) ?? .unknown
+        }
+    }
+
+    public enum Method: String, Codable, Hashable, Sendable, CaseIterable {
+        case redirect = "redirect"
+        case password = "password"
+        /// Fallback for raw values this client does not know about yet.
+        case unknown = "__unknown__"
+
+        public static let allCases: [Method] = [.redirect, .password]
+
+        public init(from decoder: any Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = Method(rawValue: raw) ?? .unknown
+        }
+    }
+
+    public let name: Name
+    public let displayName: String
+    /// "redirect": a button that sends the browser to the provider; "password": a form on the login page.
+    public let method: Method
+    /// LDAP: the label above the username field.
+    public let usernameLabel: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case name = "name"
+        case displayName = "displayName"
+        case method = "method"
+        case usernameLabel = "usernameLabel"
+    }
+
+    public init(name: Name, displayName: String, method: Method, usernameLabel: String? = nil) {
+        self.name = name
+        self.displayName = displayName
+        self.method = method
+        self.usernameLabel = usernameLabel
+    }
+}
+
+/// Common account linking; group admission is a later split.
+public struct SignInAccessSettings: Codable, Hashable, Sendable {
+    /// A provider-verified unique email may link to an existing account; disabled by default.
+    public let linkByEmail: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case linkByEmail = "linkByEmail"
+    }
+
+    public init(linkByEmail: Bool? = nil) {
+        self.linkByEmail = linkByEmail
+    }
+}
+
+public struct SamlSettings: Codable, Hashable, Sendable {
+    /// A provider-verified unique email may link to an existing account; disabled by default.
+    public let linkByEmail: Bool?
+    /// The identity provider's metadata URL (entry point, entity ID, certificates).
+    public let metadataUrl: String?
+    /// Or its metadata XML, pasted in.
+    public let metadataXml: String?
+    /// The single sign-on URL (HTTP-Redirect binding); from the metadata when empty.
+    public let entryPoint: String?
+    /// The identity provider's entity ID (the response's Issuer, checked); from the metadata when empty.
+    public let idpEntityId: String?
+    /// PEM certificate(s) the identity provider signs with; from the metadata when empty.
+    public let idpCert: String?
+    /// Optio's entity ID, the audience (default `<API origin>/api/auth/saml/metadata`).
+    public let spEntityId: String?
+    /// The NameID format to ask for (default: none, the identity provider picks).
+    public let nameIdFormat: String?
+    /// The attribute holding a stable ID (default: the NameID).
+    public let idAttribute: String?
+    /// Attribute names; empty: the common names (email, mail, the WS-Fed claim URIs, the OIDs).
+    public let emailAttribute: String?
+    public let nameAttribute: String?
+    public let usernameAttribute: String?
+    public let groupsAttribute: String?
+    /// Require the whole response to be signed too (default false: the assertion must be).
+    public let wantAuthnResponseSigned: Bool?
+    /// Require the assertion to be signed (default true).
+    public let wantAssertionsSigned: Bool?
+    /// PEM bundle of the CA behind the metadata URL's certificate.
+    public let caPem: String?
+    public let insecureSkipVerify: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case linkByEmail = "linkByEmail"
+        case metadataUrl = "metadataUrl"
+        case metadataXml = "metadataXml"
+        case entryPoint = "entryPoint"
+        case idpEntityId = "idpEntityId"
+        case idpCert = "idpCert"
+        case spEntityId = "spEntityId"
+        case nameIdFormat = "nameIdFormat"
+        case idAttribute = "idAttribute"
+        case emailAttribute = "emailAttribute"
+        case nameAttribute = "nameAttribute"
+        case usernameAttribute = "usernameAttribute"
+        case groupsAttribute = "groupsAttribute"
+        case wantAuthnResponseSigned = "wantAuthnResponseSigned"
+        case wantAssertionsSigned = "wantAssertionsSigned"
+        case caPem = "caPem"
+        case insecureSkipVerify = "insecureSkipVerify"
+    }
+
+    public init(
+        linkByEmail: Bool? = nil,
+        metadataUrl: String? = nil,
+        metadataXml: String? = nil,
+        entryPoint: String? = nil,
+        idpEntityId: String? = nil,
+        idpCert: String? = nil,
+        spEntityId: String? = nil,
+        nameIdFormat: String? = nil,
+        idAttribute: String? = nil,
+        emailAttribute: String? = nil,
+        nameAttribute: String? = nil,
+        usernameAttribute: String? = nil,
+        groupsAttribute: String? = nil,
+        wantAuthnResponseSigned: Bool? = nil,
+        wantAssertionsSigned: Bool? = nil,
+        caPem: String? = nil,
+        insecureSkipVerify: Bool? = nil
+    ) {
+        self.linkByEmail = linkByEmail
+        self.metadataUrl = metadataUrl
+        self.metadataXml = metadataXml
+        self.entryPoint = entryPoint
+        self.idpEntityId = idpEntityId
+        self.idpCert = idpCert
+        self.spEntityId = spEntityId
+        self.nameIdFormat = nameIdFormat
+        self.idAttribute = idAttribute
+        self.emailAttribute = emailAttribute
+        self.nameAttribute = nameAttribute
+        self.usernameAttribute = usernameAttribute
+        self.groupsAttribute = groupsAttribute
+        self.wantAuthnResponseSigned = wantAuthnResponseSigned
+        self.wantAssertionsSigned = wantAssertionsSigned
+        self.caPem = caPem
+        self.insecureSkipVerify = insecureSkipVerify
+    }
+}
+
+/// A self-hosted Gitea or Forgejo: an OAuth2 application on it (OpenID Connect underneath).
+public struct GiteaSettings: Codable, Hashable, Sendable {
+    /// A provider-verified unique email may link to an existing account; disabled by default.
+    public let linkByEmail: Bool?
+    /// The server's URL, e.g. https://git.example.com
+    public let baseUrl: String
+    /// Space-separated; default "openid profile email groups".
+    public let scopes: String?
+    /// PEM bundle of the CA behind the server's certificate.
+    public let caPem: String?
+    public let insecureSkipVerify: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case linkByEmail = "linkByEmail"
+        case baseUrl = "baseUrl"
+        case scopes = "scopes"
+        case caPem = "caPem"
+        case insecureSkipVerify = "insecureSkipVerify"
+    }
+
+    public init(
+        linkByEmail: Bool? = nil,
+        baseUrl: String,
+        scopes: String? = nil,
+        caPem: String? = nil,
+        insecureSkipVerify: Bool? = nil
+    ) {
+        self.linkByEmail = linkByEmail
+        self.baseUrl = baseUrl
+        self.scopes = scopes
+        self.caPem = caPem
+        self.insecureSkipVerify = insecureSkipVerify
+    }
+}
+
+/// Bitbucket Cloud (an OAuth consumer). The person's groups are the
+/// workspaces they belong to (their slugs), for required and admin groups.
+public typealias BitbucketSettings = SignInAccessSettings
+
+/// Any provider's settings beyond its client ID and secret.
+public typealias AnySignInSettings = AnyCodable
+
 // MARK: - task.ts
 
 public enum TaskState: String, Codable, Hashable, Sendable, CaseIterable {
@@ -9413,26 +10090,44 @@ public enum SelfSecretTriggerType: String, Codable, Hashable, Sendable, CaseIter
     }
 }
 
-/// Things that can happen on GitHub that a trigger listens for. The first
-/// five are about a PR or an issue (three of them about a person); the rest
-/// are about the repo itself — a push, a release, a workflow run or check
-/// suite finishing, a PR merging, a label landing.
+/// Things that can happen on GitHub that a trigger listens for. Grouped as
+/// the form shows them: three about a person (review requested,
 public enum GitHubEventKind: String, Codable, Hashable, Sendable, CaseIterable {
     case reviewRequested = "review_requested"
     case mentioned = "mentioned"
     case assigned = "assigned"
     case prOpened = "pr_opened"
-    case issueOpened = "issue_opened"
+    case prCommented = "pr_commented"
+    case prReviewSubmitted = "pr_review_submitted"
+    case prSynchronized = "pr_synchronized"
     case prMerged = "pr_merged"
+    case prClosed = "pr_closed"
+    case issueOpened = "issue_opened"
+    case issueCommented = "issue_commented"
+    case issueEdited = "issue_edited"
+    case issueReopened = "issue_reopened"
+    case issueClosed = "issue_closed"
     case labeled = "labeled"
+    case unlabeled = "unlabeled"
     case push = "push"
+    case tagPushed = "tag_pushed"
+    case branchCreated = "branch_created"
+    case branchDeleted = "branch_deleted"
     case releasePublished = "release_published"
     case workflowSucceeded = "workflow_succeeded"
     case workflowFailed = "workflow_failed"
+    case deploymentSucceeded = "deployment_succeeded"
+    case deploymentFailed = "deployment_failed"
+    case repositoryDispatch = "repository_dispatch"
+    case dependabotAlert = "dependabot_alert"
+    case codeScanningAlert = "code_scanning_alert"
+    case secretScanningAlert = "secret_scanning_alert"
+    case discussionCreated = "discussion_created"
+    case discussionCommented = "discussion_commented"
     /// Fallback for raw values this client does not know about yet.
     case unknown = "__unknown__"
 
-    public static let allCases: [GitHubEventKind] = [.reviewRequested, .mentioned, .assigned, .prOpened, .issueOpened, .prMerged, .labeled, .push, .releasePublished, .workflowSucceeded, .workflowFailed]
+    public static let allCases: [GitHubEventKind] = [.reviewRequested, .mentioned, .assigned, .prOpened, .prCommented, .prReviewSubmitted, .prSynchronized, .prMerged, .prClosed, .issueOpened, .issueCommented, .issueEdited, .issueReopened, .issueClosed, .labeled, .unlabeled, .push, .tagPushed, .branchCreated, .branchDeleted, .releasePublished, .workflowSucceeded, .workflowFailed, .deploymentSucceeded, .deploymentFailed, .repositoryDispatch, .dependabotAlert, .codeScanningAlert, .secretScanningAlert, .discussionCreated, .discussionCommented]
 
     public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -9440,22 +10135,81 @@ public enum GitHubEventKind: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
+/// The state of a submitted PR review (`pr_review_submitted`).
+public enum GitHubReviewState: String, Codable, Hashable, Sendable, CaseIterable {
+    case approved = "approved"
+    case changesRequested = "changes_requested"
+    case commented = "commented"
+    /// Fallback for raw values this client does not know about yet.
+    case unknown = "__unknown__"
+
+    public static let allCases: [GitHubReviewState] = [.approved, .changesRequested, .commented]
+
+    public init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = GitHubReviewState(rawValue: raw) ?? .unknown
+    }
+}
+
+/// Whose comments, reviews and edits fire the actor kinds: `people` (the
+/// default), `bots` (GitHub Apps and accounts ending in `[bot]`), or `anyone`.
+/// Same idea as Slack's `postedBy`.
+public enum GitHubPostedBy: String, Codable, Hashable, Sendable, CaseIterable {
+    case people = "people"
+    case bots = "bots"
+    case anyone = "anyone"
+    /// Fallback for raw values this client does not know about yet.
+    case unknown = "__unknown__"
+
+    public static let allCases: [GitHubPostedBy] = [.people, .bots, .anyone]
+
+    public init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = GitHubPostedBy(rawValue: raw) ?? .unknown
+    }
+}
+
 public struct GitHubTriggerConfig: Codable, Hashable, Sendable {
     /// Which kinds fire this trigger (empty / missing = any).
     public let events: [GitHubEventKind]?
-    /// A GitHub login: `review_requested` / `mentioned` / `assigned` match against it.
+    /// A GitHub login: `review_requested` / `mentioned` / `assigned` match
+    /// against it, and its own comments, reviews, edits and PR pushes never
+    /// fire the actor kinds (an agent commenting or pushing as this account
+    /// doesn't wake itself; assigning yourself still fires `assigned`).
     public let login: String?
     /// Restrict to these `owner/name` repos (empty = any). A scheduled Task
     /// with no filter listens to its own repo only.
     public let repos: [String]?
-    /// `push` / `workflow_*`: only these branches (empty = any). Exact names or
-    /// globs (`release/*`); a push to a tag never matches.
+    /// `push` / `workflow_*` / `deployment_*` / `branch_*`: only these branches
+    /// (empty = any). Exact names or globs (`release/*`); a push to a tag never
+    /// matches `push` (that's `tag_pushed`).
     public let branches: [String]?
     /// `workflow_*`: only these workflow names (or a check suite's app name), case-insensitive.
     public let workflows: [String]?
-    /// Any-match labels: `labeled` fires only for one of these, and a PR /
-    /// issue kind only when the PR / issue carries one (empty = any).
+    /// Any-match labels: `labeled` / `unlabeled` fire only for one of these,
+    /// and a PR / issue / discussion kind only when it carries one (empty = any).
     public let labels: [String]?
+    /// Whose comments, reviews, edits and PR pushes fire the actor kinds
+    /// (`GITHUB_ACTOR_EVENT_KINDS`); default `people`. Other kinds — a push to
+    /// a branch, a release, a workflow run — fire whoever caused them.
+    public let postedBy: GitHubPostedBy?
+    /// Logins whose actions never fire this trigger, whatever the kind: an
+    /// agent commenting or pushing with a personal access token is a person to
+    /// GitHub, so name its account here (or as `login`).
+    public let ignoreLogins: [String]?
+    /// Actor kinds: fire only when the PR / issue / discussion author is the
+    /// one commenting or editing — the reporter replying to a question.
+    public let authorOnly: Bool?
+    /// Comment kinds: only comments whose body starts with this text
+    /// (case-insensitive) or, written `/pattern/flags`, matches the regex —
+    /// slash commands like `/optio retry`.
+    public let bodyMatches: String?
+    /// `pr_review_submitted`: only reviews in these states (empty = any).
+    public let reviewStates: [GitHubReviewState]?
+    /// Alert kinds: only these severities (`critical`, `high`, `medium`, `low`,
+    /// …; empty = any). An alert naming no severity (secret scanning) isn't
+    /// excluded.
+    public let severities: [String]?
 
     private enum CodingKeys: String, CodingKey {
         case events = "events"
@@ -9464,6 +10218,12 @@ public struct GitHubTriggerConfig: Codable, Hashable, Sendable {
         case branches = "branches"
         case workflows = "workflows"
         case labels = "labels"
+        case postedBy = "postedBy"
+        case ignoreLogins = "ignoreLogins"
+        case authorOnly = "authorOnly"
+        case bodyMatches = "bodyMatches"
+        case reviewStates = "reviewStates"
+        case severities = "severities"
     }
 
     public init(
@@ -9472,7 +10232,13 @@ public struct GitHubTriggerConfig: Codable, Hashable, Sendable {
         repos: [String]? = nil,
         branches: [String]? = nil,
         workflows: [String]? = nil,
-        labels: [String]? = nil
+        labels: [String]? = nil,
+        postedBy: GitHubPostedBy? = nil,
+        ignoreLogins: [String]? = nil,
+        authorOnly: Bool? = nil,
+        bodyMatches: String? = nil,
+        reviewStates: [GitHubReviewState]? = nil,
+        severities: [String]? = nil
     ) {
         self.events = events
         self.login = login
@@ -9480,6 +10246,12 @@ public struct GitHubTriggerConfig: Codable, Hashable, Sendable {
         self.branches = branches
         self.workflows = workflows
         self.labels = labels
+        self.postedBy = postedBy
+        self.ignoreLogins = ignoreLogins
+        self.authorOnly = authorOnly
+        self.bodyMatches = bodyMatches
+        self.reviewStates = reviewStates
+        self.severities = severities
     }
 }
 
@@ -9488,13 +10260,19 @@ public struct GitHubEvent: Codable, Hashable, Sendable {
     public enum Kind: String, Codable, Hashable, Sendable, CaseIterable {
         case pr = "pr"
         case issue = "issue"
+        case discussion = "discussion"
         case push = "push"
+        case tag = "tag"
+        case branch = "branch"
         case release = "release"
         case workflow = "workflow"
+        case deployment = "deployment"
+        case dispatch = "dispatch"
+        case alert = "alert"
         /// Fallback for raw values this client does not know about yet.
         case unknown = "__unknown__"
 
-        public static let allCases: [Kind] = [.pr, .issue, .push, .release, .workflow]
+        public static let allCases: [Kind] = [.pr, .issue, .discussion, .push, .tag, .branch, .release, .workflow, .deployment, .dispatch, .alert]
 
         public init(from decoder: any Decoder) throws {
             let raw = try decoder.singleValueContainer().decode(String.self)
@@ -9508,13 +10286,18 @@ public struct GitHubEvent: Codable, Hashable, Sendable {
     public let repo: String
     public let repoUrl: String
     public let kind: Kind
-    /// PR / issue number; 0 for a push, release or workflow run.
+    /// PR / issue / discussion / alert number; 0 for a push, release or workflow run.
     public let number: Double
     public let title: String
     public let body: String
     public let url: String
+    /// Who opened the PR / issue / discussion; else who caused the event.
     public let author: String
-    /// The PR's head, the pushed branch, the workflow run's branch.
+    /// Who did this — commented, reviewed, edited, pushed; lowercased login.
+    public let `actor`: String
+    /// Whether the actor is a GitHub App or a `[bot]` account.
+    public let actorIsBot: Bool
+    /// The PR's head, the pushed branch, the workflow run's branch, the deployment's ref.
     public let headBranch: String?
     public let baseBranch: String?
     /// Comment / review body when the event is a comment or review.
@@ -9525,20 +10308,31 @@ public struct GitHubEvent: Codable, Hashable, Sendable {
     public let action: String
     /// The PR's / issue's labels.
     public let labels: [String]?
-    /// The label just added (`labeled`).
+    /// The label just added (`labeled`) or removed (`unlabeled`).
     public let label: String?
     /// A push: the full ref, the head sha, the commit subjects, the compare URL.
     public let ref: String?
     public let sha: String?
     public let commits: String?
     public let compareUrl: String?
-    /// A release: its tag.
+    /// A release or a tag push: its tag.
     public let tag: String?
     /// A workflow run / check suite: its name and conclusion (`success`, `failure`, …).
     public let workflow: String?
     public let conclusion: String?
     /// A closed PR: whether it was merged.
     public let merged: Bool?
+    /// An edit: what changed, as text (`title: old → new`, the previous body).
+    public let changes: String?
+    /// A submitted review: `approved`, `changes_requested`, `commented`.
+    public let reviewState: String?
+    /// A deployment: its environment.
+    public let environment: String?
+    /// A security alert: its severity, lowercased, when the alert names one.
+    public let severity: String?
+    /// A `repository_dispatch`: its `event_type` and its `client_payload` as JSON text.
+    public let dispatchType: String?
+    public let dispatchPayload: String?
 
     private enum CodingKeys: String, CodingKey {
         case kinds = "kinds"
@@ -9551,6 +10345,8 @@ public struct GitHubEvent: Codable, Hashable, Sendable {
         case body = "body"
         case url = "url"
         case author = "author"
+        case `actor` = "actor"
+        case actorIsBot = "actorIsBot"
         case headBranch = "headBranch"
         case baseBranch = "baseBranch"
         case commentBody = "commentBody"
@@ -9567,6 +10363,12 @@ public struct GitHubEvent: Codable, Hashable, Sendable {
         case workflow = "workflow"
         case conclusion = "conclusion"
         case merged = "merged"
+        case changes = "changes"
+        case reviewState = "reviewState"
+        case environment = "environment"
+        case severity = "severity"
+        case dispatchType = "dispatchType"
+        case dispatchPayload = "dispatchPayload"
     }
 
     public init(
@@ -9580,6 +10382,8 @@ public struct GitHubEvent: Codable, Hashable, Sendable {
         body: String,
         url: String,
         author: String,
+        `actor`: String,
+        actorIsBot: Bool,
         headBranch: String? = nil,
         baseBranch: String? = nil,
         commentBody: String? = nil,
@@ -9595,7 +10399,13 @@ public struct GitHubEvent: Codable, Hashable, Sendable {
         tag: String? = nil,
         workflow: String? = nil,
         conclusion: String? = nil,
-        merged: Bool? = nil
+        merged: Bool? = nil,
+        changes: String? = nil,
+        reviewState: String? = nil,
+        environment: String? = nil,
+        severity: String? = nil,
+        dispatchType: String? = nil,
+        dispatchPayload: String? = nil
     ) {
         self.kinds = kinds
         self.targets = targets
@@ -9607,6 +10417,8 @@ public struct GitHubEvent: Codable, Hashable, Sendable {
         self.body = body
         self.url = url
         self.author = author
+        self.`actor` = `actor`
+        self.actorIsBot = actorIsBot
         self.headBranch = headBranch
         self.baseBranch = baseBranch
         self.commentBody = commentBody
@@ -9623,6 +10435,12 @@ public struct GitHubEvent: Codable, Hashable, Sendable {
         self.workflow = workflow
         self.conclusion = conclusion
         self.merged = merged
+        self.changes = changes
+        self.reviewState = reviewState
+        self.environment = environment
+        self.severity = severity
+        self.dispatchType = dispatchType
+        self.dispatchPayload = dispatchPayload
     }
 }
 

@@ -1,3 +1,4 @@
+import { workTraceability } from "../services/work-traceability.js";
 import { piCommand } from "../utils/pi-command.js";
 import { piProviderSecrets } from "../services/pi-provider-secrets.js";
 import { runBudgetHold } from "../services/usage-budget-service.js";
@@ -20,6 +21,7 @@ import {
   msUntilOffPeak,
   classifyError,
   parseRepoUrl,
+  resolveRepoPlatform,
   parseIntEnv,
   PrToolCallTracker,
   shellQuote,
@@ -45,7 +47,6 @@ import {
   retrieveSecretWithFallback,
 } from "../services/secret-service.js";
 import { getPromptTemplate } from "../services/prompt-template-service.js";
-import { isGitHubAppConfigured } from "../services/github-app-service.js";
 import { podProviderRuntime, resolveProviderForWork } from "../services/model-provider-service.js";
 import * as podPool from "../services/agent-pod-pool.js";
 import { getRuntime } from "../services/container-service.js";
@@ -98,7 +99,7 @@ import {
   EXPORT_OPENCODE_CONFIG,
   runHome,
 } from "../utils/harness-config.js";
-import { applyGitAccess } from "../services/git-access-env.js";
+import { applyGitAccess, requiredGitTokenSecret } from "../services/git-access-env.js";
 import { activityFlusher } from "../services/activity-flush.js";
 import { TASK_CLAIM_KEY, withClaimLock } from "../services/claim-lock.js";
 
@@ -421,7 +422,10 @@ export function startTaskWorker() {
 
         // repoConfig already loaded above for concurrency check
 
-        const parsedRepo = parseRepoUrl(task.repoUrl);
+        const parsedRepo = parseRepoUrl(
+          task.repoUrl,
+          resolveRepoPlatform(task.repoUrl, repoConfig?.gitPlatform) ?? undefined,
+        );
         const repoName = parsedRepo ? `${parsedRepo.owner}/${parsedRepo.repo}` : task.repoUrl;
         const isGitLab = parsedRepo?.platform === "gitlab";
         const isCodeCommit = parsedRepo?.platform === "codecommit";
@@ -434,6 +438,7 @@ export function startTaskWorker() {
 
         // Draft PRs when the repo or the task's own settings ask for them.
         const cautious = task.settings?.cautiousMode === true || !!promptConfig.cautiousMode;
+        const trace = await workTraceability(task);
         const renderedPrompt = renderPromptTemplate(promptConfig.template, {
           TASK_FILE: taskFilePath,
           BRANCH_NAME: branchName,
@@ -450,6 +455,7 @@ export function startTaskWorker() {
           CODECOMMIT_REPO: isCodeCommit ? (parsedRepo?.repo ?? "") : "",
           BASE_BRANCH: task.repoBranch ?? repoConfig?.defaultBranch ?? "main",
           PLANNING_MODE: isPlanningRun ? "true" : "",
+          ...trace.promptVars,
         });
 
         const taskFileContent = renderTaskFile({
@@ -562,12 +568,10 @@ export function startTaskWorker() {
         );
 
         // Resolve secrets (workspace → repo-scoped → global fallback)
-        // Only require GITHUB_TOKEN when GitHub App auth is not configured
+        // The repository platform decides which git token is required.
+        const gitToken = requiredGitTokenSecret(parsedRepo?.platform);
         const secretNames = [
-          ...new Set([
-            ...agentConfig.requiredSecrets,
-            ...(!isGitHubAppConfigured() ? ["GITHUB_TOKEN"] : []),
-          ]),
+          ...new Set([...agentConfig.requiredSecrets, ...(gitToken ? [gitToken] : [])]),
         ];
         const resolvedSecrets = await resolveSecretsForTask(
           secretNames,
@@ -617,6 +621,7 @@ export function startTaskWorker() {
             settings: task.settings,
           })),
         };
+        Object.assign(allEnv, trace.env);
 
         // Git sign-in (platform tokens are infra-level, not adapter secrets).
         await applyGitAccess(allEnv, {

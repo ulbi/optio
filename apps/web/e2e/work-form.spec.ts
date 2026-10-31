@@ -381,6 +381,49 @@ test.describe("New work form creates every kind", () => {
     });
   });
 
+  test("standalone on GitHub conversation events: the triage follow-up trigger keeps its who / what filters", async ({
+    page,
+  }) => {
+    await open(page);
+    await choosePreset(page, "Scheduled run");
+    await when(page, "GitHub").click();
+    // The reporter replying or editing a needs-info issue (#687): the
+    // grouped checklist, then the filters those kinds bring up.
+    await page.getByLabel("Review requested from me").uncheck();
+    await page.getByLabel("I'm @-mentioned").uncheck();
+    await page.getByTestId("github-kind-issue_commented").check();
+    await page.getByTestId("github-kind-issue_edited").check();
+    await page.getByPlaceholder("owner/name, owner/other").fill("e2e-org/e2e-repo");
+    await page.getByPlaceholder("bug, triage").fill("needs-info");
+    await page.getByTestId("github-authorOnly").check();
+    await page.getByTestId("github-bodyMatches").fill("/optio");
+    await page.getByTestId("github-postedBy").selectOption("anyone");
+    await page.getByTestId("github-ignoreLogins").fill("optio-bot");
+    // Review states only show for a submitted review; severities only for alerts.
+    await expect(page.getByTestId("github-reviewState-approved")).toHaveCount(0);
+    await expect(page.getByTestId("github-severities")).toHaveCount(0);
+    await prompt(page).fill("{{commentAuthor}} replied on {{url}}: {{commentBody}}");
+    await nameInput(page).fill(named("triage follow-up"));
+    await submit(page).click();
+    await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+
+    const id = page.url().split("/").pop()!;
+    const { triggers } = await api(`/api/tasks/${id}/triggers`);
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0].type).toBe("github");
+    expect(triggers[0].config).toMatchObject({
+      events: ["issue_commented", "issue_edited"],
+      repos: ["e2e-org/e2e-repo"],
+      labels: ["needs-info"],
+      authorOnly: true,
+      bodyMatches: "/optio",
+      postedBy: "anyone",
+      ignoreLogins: ["optio-bot"],
+    });
+    expect(triggers[0].config.reviewStates).toBeUndefined();
+    expect(triggers[0].config.severities).toBeUndefined();
+  });
+
   test("standalone on PagerDuty incidents: a Job in a pod keeps its kinds, services, and urgency", async ({
     page,
   }) => {
@@ -790,6 +833,40 @@ test.describe("Remembered agent settings", () => {
     await page.getByTestId("work-last-settings").getByRole("button", { name: "Reset" }).click();
     await expect(page.getByTestId("work-last-settings")).toHaveCount(0);
     await expect(whoCard.getByLabel("Model")).not.toHaveValue("claude-sonnet-4-6");
+  });
+
+  test("an example clicked before the last settings arrive keeps its Then and Where", async ({
+    page,
+  }) => {
+    // The form opens on "Open a PR" and, once your last settings load, starts
+    // from them — unless you've already clicked an example, even that one. The
+    // last settings here are an interactive session; they arrive only after
+    // the click, and may fill blank options but not move Then.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    await page.route("**/api/me/work-defaults", async (route) => {
+      if (route.request().method() !== "GET") return route.fulfill({ json: { defaults: {} } });
+      await gate;
+      await route.fulfill({
+        json: {
+          defaults: {
+            runtime: "claude-code",
+            then: "waits-for-me",
+            location: { runTarget: "cluster" },
+          },
+        },
+      });
+    });
+    await open(page);
+    await choosePreset(page, "Open a PR");
+    await expect(then(page, "Exit when done")).toHaveAttribute("aria-pressed", "true");
+    const answered = page.waitForResponse(
+      (r) => r.url().includes("/api/me/work-defaults") && r.request().method() === "GET",
+    );
+    release();
+    await answered;
+    await expect(then(page, "Exit when done")).toHaveAttribute("aria-pressed", "true");
+    await expect(then(page, "Wait for me")).toHaveAttribute("aria-pressed", "false");
   });
 });
 

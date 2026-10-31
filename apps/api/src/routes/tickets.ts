@@ -17,6 +17,7 @@ import { claimDelivery } from "./event-ingress.js";
 import { ErrorResponseSchema, IdParamsSchema } from "../schemas/common.js";
 import { TicketProviderSchema } from "../schemas/integration.js";
 import { requireDeploymentAdmin, requireRole } from "../plugins/auth.js";
+import { receiverFor, ticketSourceRefusal } from "../services/feature-guard.js";
 
 // ── Zod schemas for ticket provider config ─────────────────────────────────
 
@@ -40,15 +41,25 @@ const jiraConfigSchema = z.object({
 
 const gitlabConfigSchema = z.object({
   source: z.literal("gitlab"),
-  config: z.object({
-    host: z.string().min(1).refine(isSsrfSafeHost, {
-      message: "Host must not target private or internal addresses",
+  config: z
+    .object({
+      host: z.string().min(1).refine(isSsrfSafeHost, {
+        message: "Host must not target private or internal addresses",
+      }),
+      token: z.string().min(1),
+      projectPath: z.string().min(1).optional(),
+      groupPath: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("A group instead of a project: the issues of all its projects"),
+      label: z.string().optional(),
+      maxPages: z.number().int().positive().optional(),
+    })
+    .refine((c) => !!c.projectPath || !!c.groupPath, {
+      message: "Give a projectPath or a groupPath",
+      path: ["projectPath"],
     }),
-    token: z.string().min(1),
-    projectPath: z.string().min(1),
-    label: z.string().optional(),
-    maxPages: z.number().int().positive().optional(),
-  }),
   enabled: z.boolean().optional(),
 });
 
@@ -202,11 +213,14 @@ export async function ticketRoutes(rawApp: FastifyInstance) {
           "linked to the provider record.",
         tags: ["Repos & Integrations"],
         body: ticketProviderConfigSchema,
-        response: { 201: ProviderResponseSchema },
+        response: { 201: ProviderResponseSchema, 400: ErrorResponseSchema },
       },
     },
     async (req, reply) => {
       const body = req.body;
+      // A ticket source the deployment leaves out (OPTIO_TICKET_SOURCES).
+      const unavailable = ticketSourceRefusal(body.source);
+      if (unavailable) return reply.status(400).send({ error: unavailable });
 
       const sensitiveFields = SENSITIVE_PROVIDER_FIELDS[body.source] ?? [];
       const safeConfig: Record<string, unknown> = { ...body.config };
@@ -298,7 +312,8 @@ export async function ticketRoutes(rawApp: FastifyInstance) {
   // GitHub webhook — hidden from spec because request body is verified via HMAC
   // and response is trivial. Uses preParsing to capture the raw bytes for the
   // signature check before JSON parsing.
-  app.post("/api/webhooks/github", {
+  // Never registered when OPTIO_TRIGGERS leaves out GitHub: a delivery answers 404.
+  receiverFor(app, "github").post("/api/webhooks/github", {
     schema: {
       hide: true,
       operationId: "githubWebhook",

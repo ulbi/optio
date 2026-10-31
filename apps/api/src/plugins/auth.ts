@@ -111,6 +111,9 @@ const PUBLIC_ROUTES = new Set([
  * unset. Everything else under /api/webhooks is outbound-webhook management
  * and stays behind auth — including GET/PATCH/DELETE on these same paths,
  * which would otherwise reach the management routes' `/api/webhooks/:id`.
+ * A receiver whose trigger the deployment leaves out (OPTIO_TRIGGERS) stays
+ * listed but is never registered (services/feature-guard.ts `receiverFor`), so a
+ * delivery to it answers 404 rather than asking for a session.
  */
 const PUBLIC_WEBHOOK_RECEIVERS = new Set([
   "/api/webhooks/github", // routes/tickets.ts: X-Hub-Signature-256, GITHUB_WEBHOOK_SECRET
@@ -150,6 +153,10 @@ const PUBLIC_AUTH_ROUTES = new Set([
   "/api/auth/gitlab/callback",
   "/api/auth/oidc/login",
   "/api/auth/oidc/callback",
+  "/api/auth/ldap/login",
+  "/api/auth/saml/login",
+  "/api/auth/saml/callback",
+  "/api/auth/saml/metadata",
   "/api/auth/cli/start",
   "/api/auth/cli/token",
 ]);

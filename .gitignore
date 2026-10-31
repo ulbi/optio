@@ -15,7 +15,6 @@ apps/api/.env
 .optio/
 .claude/
 .tool-versions
-.values.local.yaml
 helm/optio/values-prod.yaml
 .worktrees/
 /issues/
@@ -27,3 +26,4 @@ apps/api/openapi.generated.d.ts
 # Playwright artifacts
 apps/web/test-results/
 apps/web/playwright-report/
+release/

@@ -1,3 +1,4 @@
+import { readPrConversation } from "./pr-conversation.js";
 /**
  * PR Review service — operates on the `pr_reviews` primitive.
  *
@@ -12,7 +13,8 @@
 import {
   PrReviewState,
   PrReviewRunState,
-  DEFAULT_PR_REVIEW_PROMPT_TEMPLATE,
+  builtinPromptTemplates,
+  resolveRepoPlatform,
   REVIEW_TASK_FILE_PATH,
   PR_REVIEW_OUTPUT_PATH,
   renderPromptTemplate,
@@ -169,33 +171,7 @@ async function fetchPrContext(
   out.prBody = prData.body;
   out.headSha = prData.headSha;
 
-  try {
-    const reviews = await platform.getReviews(ri, prNumber);
-    const withBody = reviews.filter((r) => r.body?.trim());
-    if (withBody.length > 0) {
-      out.existingReviews = withBody
-        .map((r) => `**${r.author}** (${r.state}):\n${r.body}`)
-        .join("\n\n");
-    }
-  } catch {}
-
-  try {
-    const comments = await platform.getIssueComments(ri, prNumber);
-    if (comments.length > 0) {
-      out.prComments = comments
-        .map((c) => `**${c.author}** (${c.createdAt}):\n${c.body}`)
-        .join("\n\n");
-    }
-  } catch {}
-
-  try {
-    const inlineComments = await platform.getInlineComments(ri, prNumber);
-    if (inlineComments.length > 0) {
-      out.inlineComments = inlineComments
-        .map((c) => `**${c.author}** on \`${c.path}${c.line ? `:${c.line}` : ""}\`:\n${c.body}`)
-        .join("\n\n");
-    }
-  } catch {}
+  Object.assign(out, await readPrConversation(platform, ri, prNumber));
 
   return out;
 }
@@ -560,6 +536,7 @@ export async function launchPrReview(input: LaunchPrReviewInput) {
 // Just the fields enqueueReviewRun reads from the repo config. Accepts
 // both RepoRecord (from getRepoByUrl) and raw DB row shapes.
 interface RepoConfigLike {
+  gitPlatform?: string | null;
   defaultBranch: string;
   reviewPromptTemplate?: string | null;
   reviewModel?: string | null;
@@ -621,9 +598,14 @@ export async function enqueueReviewRun(
       opts.prContext ?? (await fetchPrContext(review.repoUrl, review.prNumber, opts.createdBy));
     headSha = prContext.headSha || headSha;
 
-    const template = repoConfig.reviewPromptTemplate ?? DEFAULT_PR_REVIEW_PROMPT_TEMPLATE;
+    const template =
+      repoConfig.reviewPromptTemplate ??
+      builtinPromptTemplates(resolveRepoPlatform(review.repoUrl, repoConfig.gitPlatform)).prReview;
     const fullRepoName = `${review.repoOwner}/${review.repoName}`;
-    const parsedRepoUrl = parseRepoUrl(review.repoUrl);
+    const parsedRepoUrl = parseRepoUrl(
+      review.repoUrl,
+      resolveRepoPlatform(review.repoUrl, repoConfig.gitPlatform) ?? undefined,
+    );
     const isGitLab = parsedRepoUrl?.platform === "gitlab";
     const isCodeCommit = parsedRepoUrl?.platform === "codecommit";
 
@@ -869,6 +851,7 @@ export async function submitReview(
   const result = await platform.submitReview(ri, review.prNumber, {
     event,
     body: review.summary ?? "Review by Optio",
+    commitId: review.headSha,
     comments: comments.length > 0 ? comments : undefined,
   });
 

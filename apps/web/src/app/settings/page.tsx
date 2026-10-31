@@ -36,6 +36,10 @@ import {
 import { NotificationPreferences } from "@/components/notifications/notification-preferences";
 import { ApiKeysManager } from "@/components/settings/api-keys-manager";
 import { ModelProvidersManager } from "@/components/settings/model-providers-manager";
+import { useFeatures } from "@/hooks/use-features";
+import { ticketSourceOptions } from "@/components/settings/ticket-sources";
+import { WorkspaceCreationSettings } from "@/components/settings/workspace-creation-settings";
+import { OnboardingSettings } from "@/components/settings/onboarding-settings";
 import { SignInSettings } from "@/components/settings/sign-in-settings";
 import { ReviewAgentPicker } from "@/components/review-agent-picker";
 import { AgentIcon, BrandIcon, brandFor } from "@/components/brand-icon";
@@ -1314,7 +1318,13 @@ function MarketplaceSkills() {
 
 function AuthenticationSettings() {
   // Settings → Access → Sign-in: see components/settings/sign-in-settings.tsx.
-  return <SignInSettings />;
+  return (
+    <>
+      <SignInSettings />
+      <WorkspaceCreationSettings />
+      <OnboardingSettings />
+    </>
+  );
 }
 
 function OptioAgentSettings() {
@@ -1751,16 +1761,24 @@ function GitHubTokenManager() {
 
 const TICKET_SOURCES = [
   { value: "github", label: "GitHub Issues" },
+  { value: "gitlab", label: "GitLab Issues" },
   { value: "jira", label: "Jira" },
   { value: "linear", label: "Linear" },
   { value: "notion", label: "Notion" },
 ] as const;
 
 function TicketIntegration() {
+  const { features } = useFeatures();
+  const offeredSources = ticketSourceOptions(TICKET_SOURCES, features);
   const [syncing, setSyncing] = useState(false);
   const [providers, setProviders] = useState<any[] | null>(null);
   const [showAddProvider, setShowAddProvider] = useState(false);
   const [newProviderSource, setNewProviderSource] = useState("github");
+  useEffect(() => {
+    if (!offeredSources.some((source) => source.value === newProviderSource)) {
+      setNewProviderSource(offeredSources[0]?.value ?? "");
+    }
+  }, [features, newProviderSource]);
   const [providerConfig, setProviderConfig] = useState<Record<string, string>>({});
   const [savingProvider, setSavingProvider] = useState(false);
 
@@ -1848,6 +1866,16 @@ function TicketIntegration() {
       { key: "apiKey", label: "Integration Token", type: "password" },
       { key: "databaseId", label: "Database ID" },
     ],
+    gitlab: [
+      { key: "host", label: "GitLab host" },
+      { key: "projectPath", label: "Project (group/project)" },
+      { key: "groupPath", label: "Or a group (all its projects' issues)" },
+      {
+        key: "token",
+        label: "Access token",
+        type: "password",
+      },
+    ],
   };
 
   const label = "Tickets";
@@ -1925,6 +1953,9 @@ function TicketIntegration() {
                           p.config?.databaseId &&
                           `Database: ${p.config.databaseId}`}
                         {p.source === "linear" && p.config?.teamId && `Team: ${p.config.teamId}`}
+                        {p.source === "gitlab" &&
+                          (p.config?.projectPath || p.config?.groupPath) &&
+                          `${p.config.host ?? "gitlab.com"}/${p.config.projectPath ?? p.config.groupPath}`}
                         {p.source === "jira" && p.config?.baseUrl && `${p.config.baseUrl}`}
                       </p>
                     </div>
@@ -1972,7 +2003,7 @@ function TicketIntegration() {
             size="panel"
             icon={Ticket}
             title="No ticket providers"
-            description="Connect GitHub Issues, Jira, Linear, or Notion to turn labeled tickets into work."
+            description="Connect GitHub Issues, GitLab Issues, Jira, Linear, or Notion to turn labeled tickets into work."
             action={
               <button onClick={() => setShowAddProvider(true)} className={BTN_PRIMARY}>
                 <Plus className="w-3.5 h-3.5" />
@@ -1994,7 +2025,7 @@ function TicketIntegration() {
               }}
               aria-label="Provider"
               wrap
-              options={TICKET_SOURCES.map((s) => ({
+              options={offeredSources.map((s) => ({
                 value: s.value,
                 label: s.label,
                 icon: <BrandIcon brand={s.value} className="w-3.5 h-3.5" />,

@@ -14,10 +14,15 @@ const mockValidateSession = vi.fn();
 const mockCreateSession = vi.fn();
 const mockRevokeSession = vi.fn();
 const mockCreateWsToken = vi.fn();
+const mockCompleteSignIn = vi.fn(async (..._args: unknown[]) => ({
+  deploymentAdmin: false,
+  bootstrapped: false,
+}));
 
 vi.mock("../services/session-service.js", () => ({
   validateSession: (...args: unknown[]) => mockValidateSession(...args),
   createSession: (...args: unknown[]) => mockCreateSession(...args),
+  linkAccountsByEmailEnabled: () => false,
   revokeSession: (...args: unknown[]) => mockRevokeSession(...args),
   createWsToken: (...args: unknown[]) => mockCreateWsToken(...args),
 }));
@@ -46,16 +51,29 @@ vi.mock("../services/oauth/index.js", () => ({
   getOAuthProvider: () => mockOAuthProvider,
 }));
 
+const mockResolveProviderConfig = vi.fn<(provider: string) => Promise<unknown>>(async () => null);
+vi.mock("../services/auth/ldap.js", () => ({
+  LdapAuthError: class extends Error {
+    constructor(
+      message: string,
+      readonly code: string,
+    ) {
+      super(message);
+    }
+  },
+  ldapAuthenticate: vi.fn(),
+}));
+
 // Sign-in configuration: no stored provider, no allowed-domain restriction,
 // nobody a deployment admin (covered by sign-in-config.int.test.ts).
 vi.mock("../services/sign-in-config-service.js", () => ({
   SIGN_IN_PROVIDERS: ["google", "github", "gitlab", "oidc"],
-  completeSignIn: async () => ({ deploymentAdmin: false, bootstrapped: false }),
+  completeSignIn: (...args: unknown[]) => mockCompleteSignIn(...args),
   domainDecision: () => mockDomainDecision,
   isDeploymentAdmin: async () => deploymentAdmin,
   hasDeploymentAdmin: async () => true,
   isFoundingWorkspaceAdmin: async () => false,
-  resolveProviderConfig: async () => null,
+  resolveProviderConfig: (provider: string) => mockResolveProviderConfig(provider),
 }));
 
 vi.mock("../plugins/auth.js", async (importOriginal) => ({
@@ -128,6 +146,79 @@ vi.mock("../workers/token-validation-worker.js", () => ({
 }));
 
 import { authRoutes } from "./auth.js";
+
+describe("OIDC browser-bound protocol state", () => {
+  let app: FastifyInstance;
+  const flow = { codeVerifier: "provider-pkce-verifier", nonce: "provider-nonce" };
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    redisStore.clear();
+    authDisabled = false;
+    mockDomainDecision = "allowed";
+    mockOAuthProvider = {
+      name: "oidc",
+      beginFlow: () => flow,
+      authorizeUrl: (state: string) => `https://idp.example/authorize?state=${state}`,
+      exchangeCode: vi.fn().mockResolvedValue({ accessToken: "access" }),
+      fetchUser: vi.fn().mockResolvedValue({
+        externalId: "subject",
+        email: "person@acme.test",
+        displayName: "Person",
+        emailVerified: true,
+        emailVerifiedByProvider: false,
+      }),
+    };
+    mockCreateSession.mockResolvedValue({ token: "oidc-session", user: mockUser });
+    mockRevokeSession.mockResolvedValue(undefined);
+    app = await buildTestApp();
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it("keeps the provider nonce and PKCE alongside the BFF challenge, and spends state once", async () => {
+    const start = await app.inject({
+      url: `/api/auth/oidc/login?browserChallenge=${browserChallenge}`,
+    });
+    expect(start.statusCode).toBe(302);
+    const state = new URL(start.headers.location!).searchParams.get("state")!;
+    expect(JSON.parse(redisStore.get(`oauth_state:${state}`)!)).toEqual({
+      provider: "oidc",
+      browserChallenge,
+      flow,
+    });
+    const request = { url: `/api/auth/oidc/callback?state=${state}&code=idp-code` };
+    const callback = await app.inject(request);
+    expect(mockOAuthProvider.exchangeCode).toHaveBeenCalledWith("idp-code", flow);
+    const code = new URL(callback.headers.location!).searchParams.get("code")!;
+    expect(JSON.parse(redisStore.get(`auth_code:${code}`)!)).toEqual({
+      token: "oidc-session",
+      browserChallenge,
+    });
+    expect(mockCompleteSignIn).toHaveBeenCalledWith(
+      expect.objectContaining({ emailVerified: false, provider: "oidc" }),
+    );
+    expect((await app.inject(request)).headers.location).toContain("invalid_state");
+    expect(mockOAuthProvider.exchangeCode).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses an unbound browser login before contacting the provider", async () => {
+    const response = await app.inject({ url: "/api/auth/oidc/login" });
+    expect(response.statusCode).toBe(400);
+    expect(redisStore.size).toBe(0);
+    expect(mockOAuthProvider.exchangeCode).not.toHaveBeenCalled();
+  });
+
+  it("revokes a session created from legacy state without a browser binding", async () => {
+    redisStore.set("oauth_state:unbound", JSON.stringify({ provider: "oidc", flow }));
+    const response = await app.inject({
+      url: "/api/auth/oidc/callback?state=unbound&code=idp-code",
+    });
+    expect(response.headers.location).toContain("invalid_state");
+    expect(mockRevokeSession).toHaveBeenCalledWith("oidc-session");
+    expect([...redisStore.keys()].some((key) => key.startsWith("auth_code:"))).toBe(false);
+  });
+});
 
 // ─── Helpers ───
 
@@ -1128,5 +1219,142 @@ describe("remaining sign-in and credential access boundaries", () => {
     const res = await app.inject(operation);
     expect(res.statusCode).toBe(409);
     expect(res.json()).toEqual({ ok: false, error: "Token expired" });
+  });
+});
+
+describe("LDAP password login", () => {
+  let app: FastifyInstance;
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    redisStore.clear();
+    mockDomainDecision = "allowed";
+    mockResolveProviderConfig.mockResolvedValue(null);
+    mockCreateSession.mockImplementation(async (_provider: string, profile: any) => ({
+      token: "session-token",
+      user: { id: "user-1", email: profile.email, displayName: profile.displayName },
+    }));
+    app = await buildTestApp();
+  });
+  afterEach(async () => {
+    await app.close();
+  });
+  it("links LDAP accounts by email only when LDAP's linkByEmail is on", async () => {
+    const { ldapAuthenticate } = await import("../services/auth/ldap.js");
+    vi.mocked(ldapAuthenticate).mockResolvedValue({
+      externalId: "CN=Ada,DC=corp,DC=example",
+      email: "ada@acme.com",
+      displayName: "Ada",
+      username: "ada",
+      groups: [],
+    } as any);
+    for (const [settings, linkByEmail] of [
+      [{}, false],
+      [{ linkByEmail: true }, true],
+    ] as const) {
+      mockCreateSession.mockClear();
+      mockResolveProviderConfig.mockImplementation(async (p: string) =>
+        p === "ldap"
+          ? {
+              clientId: "",
+              clientSecret: "bind-pw",
+              allowedDomains: [],
+              source: "database",
+              settings: { url: "ldaps://ad.example.com", userBaseDn: "DC=corp", ...settings },
+            }
+          : null,
+      );
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/auth/ldap/login?browserChallenge=${browserChallenge}`,
+        payload: { username: "ada", password: "pw" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        "ldap",
+        expect.objectContaining({ emailVerified: true }),
+        { linkByEmail },
+      );
+      expect(JSON.parse(redisStore.get(`auth_code:${res.json().code}`)!)).toEqual({
+        token: "session-token",
+        browserChallenge,
+      });
+    }
+  });
+
+  it("refuses a directory-disabled account with 403 and no session", async () => {
+    const { ldapAuthenticate, LdapAuthError } = await import("../services/auth/ldap.js");
+    vi.mocked(ldapAuthenticate).mockRejectedValue(
+      new LdapAuthError("This account is disabled in the directory", "account_disabled"),
+    );
+    mockResolveProviderConfig.mockImplementation(async (p: string) =>
+      p === "ldap"
+        ? {
+            clientId: "",
+            clientSecret: "bind-pw",
+            allowedDomains: [],
+            source: "database",
+            settings: { url: "ldaps://ad.example.com", userBaseDn: "DC=corp" },
+          }
+        : null,
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/auth/ldap/login?browserChallenge=${browserChallenge}`,
+      payload: { username: "ada", password: "pw" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toMatch(/disabled in the directory/);
+    expect(mockCreateSession).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 for the LDAP form when LDAP isn't configured", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/auth/ldap/login?browserChallenge=${browserChallenge}`,
+      payload: { username: "ada", password: "pw" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("rejects an unbound browser login before checking the password", async () => {
+    const { ldapAuthenticate } = await import("../services/auth/ldap.js");
+    mockResolveProviderConfig.mockResolvedValue({ settings: {}, allowedDomains: [] });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/ldap/login",
+      payload: { username: "ada", password: "pw" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(ldapAuthenticate).not.toHaveBeenCalled();
+    expect(mockCreateSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps CLI password sign-in stateless and revokes its temporary browser session", async () => {
+    const { ldapAuthenticate } = await import("../services/auth/ldap.js");
+    vi.mocked(ldapAuthenticate).mockResolvedValue({
+      externalId: "directory-ada",
+      email: "ada@acme.test",
+      displayName: "Ada",
+      username: "ada",
+      groups: [],
+    } as any);
+    mockResolveProviderConfig.mockResolvedValue({
+      settings: { url: "ldaps://directory.example", userBaseDn: "DC=example" },
+      allowedDomains: [],
+    });
+    mockCreateApiKey.mockResolvedValue({ token: "optio_pat_ldap", tokenId: "pat-id" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/ldap/login",
+      payload: { username: "ada", password: "pw", cli: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().token).toBe("optio_pat_ldap");
+    expect(res.headers["set-cookie"]).toBeUndefined();
+    expect(mockRevokeSession).toHaveBeenCalledWith("session-token");
+    expect([...redisStore.keys()].some((key) => key.startsWith("auth_code:"))).toBe(false);
+    expect(mockCompleteSignIn).toHaveBeenCalledWith(
+      expect.objectContaining({ emailVerified: true, provider: "ldap" }),
+    );
   });
 });

@@ -1,6 +1,7 @@
 import {
   TaskState,
-  DEFAULT_REVIEW_PROMPT_TEMPLATE,
+  builtinPromptTemplates,
+  resolveRepoPlatform,
   REVIEW_TASK_FILE_PATH,
   renderPromptTemplate,
   shellSafeTitle,
@@ -133,10 +134,15 @@ export async function launchReview(parentTaskId: string): Promise<string> {
   const reviewTask = subtask;
 
   // Build the review prompt
-  const reviewTemplate = repoConfig?.reviewPromptTemplate ?? DEFAULT_REVIEW_PROMPT_TEMPLATE;
+  const reviewTemplate =
+    repoConfig?.reviewPromptTemplate ??
+    builtinPromptTemplates(resolveRepoPlatform(parentTask.repoUrl, repoConfig?.gitPlatform)).review;
   const repoName = `${owner}/${repo}`;
 
-  const parsedRepo = parseRepoUrl(parentTask.repoUrl);
+  const parsedRepo = parseRepoUrl(
+    parentTask.repoUrl,
+    resolveRepoPlatform(parentTask.repoUrl, repoConfig?.gitPlatform) ?? undefined,
+  );
   const isGitLab = parsedRepo?.platform === "gitlab";
   const isCodeCommit = parsedRepo?.platform === "codecommit";
 
@@ -200,9 +206,6 @@ export async function launchReview(parentTaskId: string): Promise<string> {
         taskFilePath: REVIEW_TASK_FILE_PATH,
         // Agent-agnostic model field — read by the worker for any review agent.
         model: review.model,
-        // Back-compat: keep populating claudeModel for one release so
-        // in-flight workers that pre-date the resolver still find a model.
-        claudeModel: review.model,
       },
     },
     {

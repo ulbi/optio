@@ -28,6 +28,7 @@ import { ticketRoutes } from "./routes/tickets.js";
 import { setupRoutes } from "./routes/setup.js";
 import { authRoutes } from "./routes/auth.js";
 import { signInRoutes } from "./routes/sign-in.js";
+import { deploymentSettingsRoutes } from "./routes/deployment-settings.js";
 import { configRoutes } from "./routes/config.js";
 import { resumeRoutes } from "./routes/resume.js";
 import { promptTemplateRoutes } from "./routes/prompt-templates.js";
@@ -67,12 +68,14 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { optioRoutes } from "./routes/optio.js";
 import { optioSettingsRoutes } from "./routes/optio-settings.js";
 import { agentOptionsRoutes } from "./routes/agent-options.js";
+import { featureRoutes } from "./routes/features.js";
 import { activityRoutes } from "./routes/activity.js";
 import { recentRunsRoutes } from "./routes/recent-runs.js";
 import githubAppRoutes from "./routes/github-app.js";
 import { githubTokenRoutes } from "./routes/github-token.js";
 import { hookRoutes } from "./routes/hooks.js";
 import { localRoutes } from "./routes/local.js";
+import { workLinkRoutes } from "./routes/work-links.js";
 import { eventIngressRoutes } from "./routes/event-ingress.js";
 import { logStreamWs } from "./ws/log-stream.js";
 import { eventsWs } from "./ws/events.js";
@@ -315,6 +318,7 @@ export async function buildServer() {
   await app.register(setupRoutes);
   await app.register(authRoutes);
   await app.register(signInRoutes);
+  await app.register(deploymentSettingsRoutes); // Settings → Access
   await app.register(configRoutes);
   await app.register(resumeRoutes);
   await app.register(promptTemplateRoutes);
@@ -354,12 +358,14 @@ export async function buildServer() {
   await app.register(optioRoutes);
   await app.register(optioSettingsRoutes);
   await app.register(agentOptionsRoutes);
+  await app.register(featureRoutes); // docs/feature-lists.md
   await app.register(activityRoutes);
   await app.register(recentRunsRoutes);
   await app.register(githubAppRoutes);
   await app.register(githubTokenRoutes);
   await app.register(hookRoutes);
   await app.register(localRoutes);
+  await app.register(workLinkRoutes);
   await app.register(eventIngressRoutes);
 
   // WebSocket routes

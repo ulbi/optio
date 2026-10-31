@@ -1,4 +1,5 @@
 "use client";
+import { Combobox } from "@/components/ui/combobox";
 
 import { workHref } from "@/lib/work-href";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -7,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   DATADOG_PAYLOAD_TEMPLATE,
+  GITHUB_REVIEW_STATES,
   getProviderCatalog,
   isSelfSecretTriggerType,
   providerForAgentType,
@@ -61,9 +63,17 @@ import {
   SECRET_HEADER,
   TriggerSecretDialog,
 } from "@/components/triggers/pylon-secret-dialog";
-import { EVENT_KINDS, PAGERDUTY_KINDS } from "@/components/triggers/event-trigger-details";
+import {
+  EVENT_KINDS,
+  GITHUB_ACTOR_KINDS,
+  GITHUB_ALERT_KINDS,
+  GITHUB_COMMENT_KINDS,
+  PAGERDUTY_KINDS,
+  type EventKind,
+} from "@/components/triggers/event-trigger-details";
 import { TriggerSelector, TriggerTypeButton, cronIsValid } from "@/components/trigger-selector";
 import { useLocalHosts } from "@/hooks/use-local-hosts";
+import { useFeatures } from "@/hooks/use-features";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import {
   EMPTY_DRAFT,
@@ -74,7 +84,8 @@ import {
   SLACK_CHANNEL_ID,
   TERMINAL,
   TRIGGER_PARAMS,
-  WHEN_TYPES,
+  draftForFeatures,
+  whenTypesFor,
   describe,
   deriveKind,
   followThrough,
@@ -285,6 +296,11 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
   // The signed-in account: its provider handle (GitHub login) prefills "about
   // you" event triggers; an admin may make organization secrets.
   const { user: me, userId, isAdmin } = useCurrentUser();
+  const { features } = useFeatures();
+  useEffect(() => {
+    if (!edit) setDraftRaw((draft) => draftForFeatures(draft, features));
+  }, [features, edit]);
+
   // Model providers you can pick, and secret names a pod can get (never values).
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [providersLoaded, setProvidersLoaded] = useState(false);
@@ -295,6 +311,9 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
   // from scratch, not your saved settings, and drops the "last settings" hint.
   const touchedRuntimes = useRef(new Set<string>());
   const defaultsApplied = useRef(false);
+  // Set once you click an example chip: the form is then yours, even when the
+  // chip is the one it opened on, and your last settings only fill blanks.
+  const presetClicked = useRef(false);
   const [pickable, setPickable] = useState<PickableSecret[]>([]);
   // One line under Owner after a private pick switched it to you.
   const [ownerNote, setOwnerNote] = useState<string | null>(null);
@@ -428,7 +447,7 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
     }
     defaultsApplied.current = true;
     const repoOf = (d: WorkDraft) => repos.find((r: any) => r.id === d.repoId);
-    if (preset === PRESETS[0].id) {
+    if (preset === PRESETS[0].id && !presetClicked.current) {
       setDraftRaw((d) => {
         const next = withRepoDefaults(
           applyWorkDefaults(d, savedDefaults, providers, hosts),
@@ -439,7 +458,8 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
         return next;
       });
     } else if (preset) {
-      // Another chip clicked before the settings loaded: fill its blank options.
+      // A chip clicked before the settings loaded (the first one included):
+      // fill its blank options, but keep the Where and Then it chose.
       const p = PRESETS.find((x) => x.id === preset);
       if (p) {
         setDraftRaw((d) => applyPresetTo(d, p, savedDefaults, providers, new Set(), repoOf(d)));
@@ -486,6 +506,7 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
   const kind = deriveKind(draft);
   const effectiveRepoUrl = local ? (localRepoUrl ?? "") : draft.repoUrl;
   const repoRow = repos.find((r: any) => r.id === draft.repoId);
+  const machineRepo = localRepoUrl ? repos.find((r: any) => r.repoUrl === localRepoUrl) : undefined;
   const machine = hosts.find((h) => h.id === draft.location.localHostId);
   const sentenceCtx = { repoName: repoRow?.fullName ?? null, machineName: machine?.name ?? null };
   const sentence = useMemo(() => describe(draft, sentenceCtx), [draft, repoRow, machine]);
@@ -509,6 +530,7 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
   const applyPreset = (id: string) => {
     const p = PRESETS.find((x) => x.id === id);
     if (!p) return;
+    presetClicked.current = true;
     // A chip that leaves the options blank starts from your saved settings.
     setDraftRaw((d) =>
       applyPresetTo(
@@ -689,7 +711,7 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
     lock({ location: { ...draft.location, runTarget: "cluster" } });
   const machineDisabled = lock({ location: { ...draft.location, runTarget: "local" } });
   const whenDisabled = Object.fromEntries(
-    WHEN_TYPES.map((w) => [
+    whenTypesFor(features).map((w) => [
       w,
       lock(
         isEventWhen(w)
@@ -905,16 +927,18 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
                   inset
                   disabledTypes={whenDisabled}
                   extraActive={isEventWhen(draft.when)}
-                  extra={WHEN_TYPES.filter(isEventWhen).map((w) => (
-                    <TriggerTypeButton
-                      key={w}
-                      icon={WHEN_META[w].icon}
-                      label={WHEN_META[w].label}
-                      active={draft.when === w}
-                      onClick={() => setWhen(w)}
-                      disabled={whenDisabled[w]}
-                    />
-                  ))}
+                  extra={whenTypesFor(features)
+                    .filter(isEventWhen)
+                    .map((w) => (
+                      <TriggerTypeButton
+                        key={w}
+                        icon={WHEN_META[w].icon}
+                        label={WHEN_META[w].label}
+                        active={draft.when === w}
+                        onClick={() => setWhen(w)}
+                        disabled={whenDisabled[w]}
+                      />
+                    ))}
                 />
                 {isEventWhen(draft.when) && (
                   <EventConfig
@@ -976,18 +1000,15 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
                               <label className="block text-sm text-text-muted mb-1.5">
                                 Base branch
                               </label>
-                              <div className="flex items-center gap-2">
-                                <GitBranchIcon className="w-3.5 h-3.5 text-text-muted" />
-                                <input
-                                  type="text"
-                                  value={draft.repoBranch}
-                                  onChange={(e) => setDraft({ repoBranch: e.target.value })}
-                                  className={INPUT_INNER}
-                                />
-                              </div>
+                              <BranchPicker
+                                repoId={machineRepo?.id ?? null}
+                                value={draft.repoBranch}
+                                onChange={(repoBranch) => setDraft({ repoBranch })}
+                              />
                             </div>
                             <p className="text-[11px] text-text-muted/80 sm:pb-2.5">
-                              The agent branches off this in the checkout and opens a PR against it.
+                              The agent branches off this in the checkout and opens a{" "}
+                              {prNoun(machineRepo?.gitPlatform)} against it.
                             </p>
                           </div>
                         ) : (
@@ -1044,15 +1065,11 @@ export function WorkForm({ edit }: { edit?: EditTarget } = {}) {
                                 <label className="block text-sm text-text-muted mb-1.5">
                                   Branch
                                 </label>
-                                <div className="flex items-center gap-2">
-                                  <GitBranchIcon className="w-3.5 h-3.5 text-text-muted" />
-                                  <input
-                                    type="text"
-                                    value={draft.repoBranch}
-                                    onChange={(e) => setDraft({ repoBranch: e.target.value })}
-                                    className={INPUT_INNER}
-                                  />
-                                </div>
+                                <BranchPicker
+                                  repoId={draft.repoId || null}
+                                  value={draft.repoBranch}
+                                  onChange={(repoBranch) => setDraft({ repoBranch })}
+                                />
                               </div>
                             </div>
                           ) : (
@@ -1816,11 +1833,22 @@ function EventConfig({
   onChange: (config: Record<string, unknown>) => void;
 }) {
   const events = Array.isArray(config.events) ? (config.events as string[]) : [];
-  const toggleEvent = (v: string) =>
-    onChange({
-      ...config,
-      events: events.includes(v) ? events.filter((e) => e !== v) : [...events, v],
-    });
+  const toggleEvent = (v: string) => {
+    const nextEvents = events.includes(v) ? events.filter((e) => e !== v) : [...events, v];
+    const next: Record<string, unknown> = { ...config, events: nextEvents };
+    // A GitHub filter whose kinds are all unchecked would linger unseen; drop it.
+    if (type === "github") {
+      const has = (kinds: readonly string[]) => nextEvents.some((e) => kinds.includes(e));
+      if (!has(GITHUB_COMMENT_KINDS)) delete next.bodyMatches;
+      if (!has(GITHUB_ACTOR_KINDS)) {
+        delete next.postedBy;
+        delete next.authorOnly;
+      }
+      if (!nextEvents.includes("pr_review_submitted")) delete next.reviewStates;
+      if (!has(GITHUB_ALERT_KINDS)) delete next.severities;
+    }
+    onChange(next);
+  };
   const kinds = EVENT_KINDS[type] ?? [];
   // "Only tickets from someone else" needs to know who you are, whatever the events.
   const othersOnly = type === "linear" && config.othersOnly === true;
@@ -1843,22 +1871,49 @@ function EventConfig({
       />
     </div>
   );
-  /** The kinds checklist: `<type>-kind-<value>` test ids. */
-  const kindsRow = (
-    <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-      {kinds.map((k) => (
-        <label key={k.value} className="flex items-center gap-1.5 text-xs text-text-muted">
-          <input
-            type="checkbox"
-            checked={events.includes(k.value)}
-            onChange={() => toggleEvent(k.value)}
-            data-testid={`${type}-kind-${k.value}`}
-          />
-          {k.label}
-        </label>
-      ))}
-    </div>
+  /** One kind's checkbox: `<type>-kind-<value>` test ids. */
+  const kindBox = (k: EventKind) => (
+    <label key={k.value} className="flex items-center gap-1.5 text-xs text-text-muted">
+      <input
+        type="checkbox"
+        checked={events.includes(k.value)}
+        onChange={() => toggleEvent(k.value)}
+        data-testid={`${type}-kind-${k.value}`}
+      />
+      {k.label}
+    </label>
   );
+  // A long checklist (GitHub's) is shown under its groups' headings.
+  const groups = [...new Set(kinds.map((k) => k.group).filter((g): g is string => !!g))];
+  const kindsRow =
+    groups.length > 1 ? (
+      <div className="space-y-2">
+        {groups.map((group) => (
+          <div key={group}>
+            <p className="text-[11px] font-medium text-text-muted/70 mb-1">{group}</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {kinds.filter((k) => k.group === group).map(kindBox)}
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5">{kinds.map(kindBox)}</div>
+    );
+  // GitHub: which of its who / what filters the checked kinds take.
+  const ghActor = type === "github" && events.some((e) => GITHUB_ACTOR_KINDS.includes(e));
+  const ghComment = type === "github" && events.some((e) => GITHUB_COMMENT_KINDS.includes(e));
+  const ghReview = type === "github" && events.includes("pr_review_submitted");
+  const ghAlert = type === "github" && events.some((e) => GITHUB_ALERT_KINDS.includes(e));
+  const ghReviewStates = Array.isArray(config.reviewStates)
+    ? (config.reviewStates as string[])
+    : [];
+  const setFlag = (key: string, on: boolean) => {
+    const next: Record<string, unknown> = { ...config };
+    if (on) next[key] = true;
+    else delete next[key];
+    onChange(next);
+  };
   /** A self-secret trigger's URL and secret are made when the work is saved. */
   const mintedNote = (
     <>
@@ -2132,7 +2187,123 @@ function EventConfig({
             {listField("labels", "Only with a label", "bug, triage")}
             {type === "jira" && listField("issueTypes", "Only these issue types", "Bug, Task")}
             {type === "jira" && listField("statuses", "Into these statuses", "In Progress, Done")}
+            {ghComment && (
+              <div>
+                <label className="block text-xs text-text-muted mb-1">
+                  Comment starts with <span className="text-text-muted/60">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={String(config.bodyMatches ?? "")}
+                  onChange={(e) => {
+                    const next: Record<string, unknown> = { ...config };
+                    if (e.target.value) next.bodyMatches = e.target.value;
+                    else delete next.bodyMatches;
+                    onChange(next);
+                  }}
+                  placeholder="/optio retry"
+                  className={cn(INPUT_INNER, "font-mono")}
+                  data-testid="github-bodyMatches"
+                />
+                <p className="text-[11px] text-text-muted/60 mt-1">
+                  A slash command, say. Written <code className="font-mono">/pattern/i</code> (flags
+                  i, m, s, u), a regex matched anywhere in the comment; nested repetition like{" "}
+                  <code className="font-mono">(a+)+</code> is refused.
+                </p>
+              </div>
+            )}
+            {ghActor && (
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Written by</label>
+                <select
+                  value={String(config.postedBy ?? "people")}
+                  onChange={(e) => {
+                    const next: Record<string, unknown> = { ...config };
+                    if (e.target.value === "people") delete next.postedBy;
+                    else next.postedBy = e.target.value;
+                    onChange(next);
+                  }}
+                  className={INPUT_INNER}
+                  data-testid="github-postedBy"
+                >
+                  <option value="people">People</option>
+                  <option value="bots">Bots (GitHub Apps, [bot] accounts)</option>
+                  <option value="anyone">Anyone</option>
+                </select>
+                <p className="text-[11px] text-text-muted/60 mt-1">
+                  {String(config.postedBy ?? "people") === "people"
+                    ? "GitHub Apps and [bot] accounts don't start it. An agent working with a personal token is a person to GitHub: name its account below."
+                    : "Accounts named below, and the username above, never start it."}
+                </p>
+              </div>
+            )}
+            {type === "github" &&
+              listField("ignoreLogins", "Never from these users", "optio-bot, dependabot[bot]")}
+            {ghAlert && listField("severities", "Only these severities", "critical, high")}
           </div>
+          {ghReview && (
+            <div>
+              <p className="text-xs text-text-muted mb-1">
+                Only reviews that <span className="text-text-muted/60">(any = all)</span>
+              </p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {GITHUB_REVIEW_STATES.map((state) => (
+                  <label key={state} className="flex items-center gap-1.5 text-xs text-text-muted">
+                    <input
+                      type="checkbox"
+                      checked={ghReviewStates.includes(state)}
+                      onChange={() => {
+                        const next = ghReviewStates.includes(state)
+                          ? ghReviewStates.filter((x) => x !== state)
+                          : [...ghReviewStates, state];
+                        const cfg: Record<string, unknown> = { ...config };
+                        if (next.length) cfg.reviewStates = next;
+                        else delete cfg.reviewStates;
+                        onChange(cfg);
+                      }}
+                      data-testid={`github-reviewState-${state}`}
+                    />
+                    {state === "approved"
+                      ? "Approve"
+                      : state === "changes_requested"
+                        ? "Request changes"
+                        : "Comment"}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          {ghActor && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={config.authorOnly === true}
+                  onChange={(e) => setFlag("authorOnly", e.target.checked)}
+                  data-testid="github-authorOnly"
+                />
+                Only when the author replies
+              </label>
+              <p className="text-[11px] text-text-muted/60 mt-1 ml-5">
+                Fires only when whoever opened the issue, PR or discussion is the one commenting or
+                editing — the reporter answering a question, not a bystander.
+              </p>
+            </div>
+          )}
+          {type === "github" && (
+            <p className="text-[11px] text-text-muted/80 leading-snug flex items-start gap-1.5">
+              <span>
+                GitHub → repo (or org) → Settings → Webhooks → URL{" "}
+                <code className="font-mono break-all">{origin}/api/webhooks/github</code>, secret =
+                the deployment&apos;s <code className="font-mono">GITHUB_WEBHOOK_SECRET</code>;
+                subscribe to the events the kinds above need (pull requests, issues, issue comments,
+                reviews, pushes, branch / tag creation and deletion, releases, workflow runs, check
+                suites, deployment statuses, repository dispatches, discussions, and the Dependabot
+                / code scanning / secret scanning alerts).
+              </span>
+              <CopyButton value={`${origin}/api/webhooks/github`} label="Webhook URL" />
+            </p>
+          )}
           {type === "gitlab" && (
             <p className="text-[11px] text-text-muted/80 leading-snug flex items-start gap-1.5">
               <span>
@@ -2185,4 +2356,91 @@ function EventConfig({
       </p>
     </div>
   );
+}
+
+const BRANCH_LIMIT = 30;
+
+export function BranchPicker({
+  id,
+  repoId,
+  value,
+  onChange,
+}: {
+  id?: string;
+  repoId: string | null;
+  value: string;
+  onChange: (name: string) => void;
+}) {
+  const [branches, setBranches] = useState<
+    Awaited<ReturnType<typeof api.listRepoBranches>>["branches"]
+  >([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  // Drop answers to a search the user has already typed past (or another repo's).
+  const requestId = useRef(0);
+
+  useEffect(() => {
+    requestId.current++;
+    setBranches([]);
+    setError("");
+    setLoading(false);
+  }, [repoId]);
+
+  const search = useCallback(
+    async (q: string) => {
+      const current = ++requestId.current;
+      if (!repoId) return;
+      setLoading(true);
+      try {
+        const res = await api.listRepoBranches(repoId, {
+          q: q.trim() || undefined,
+          limit: BRANCH_LIMIT,
+        });
+        if (current !== requestId.current) return;
+        setBranches(res.branches);
+        setError(res.error ?? "");
+      } catch (err) {
+        if (current !== requestId.current) return;
+        setBranches([]);
+        setError(err instanceof Error ? err.message : "Could not list branches");
+      } finally {
+        if (current === requestId.current) setLoading(false);
+      }
+    },
+    [repoId],
+  );
+
+  return (
+    <Combobox
+      freeText
+      mono
+      id={id}
+      label="Branch"
+      value={value}
+      placeholder="Branch name"
+      icon={<GitBranchIcon />}
+      options={branches.map((b) => ({
+        id: b.name,
+        label: b.name,
+        badge: b.default ? "default" : b.protected ? "protected" : undefined,
+      }))}
+      onSearch={search}
+      onPick={(o) => onChange(o.id)}
+      onCommit={onChange}
+      loading={loading}
+      error={error}
+      emptyMessage={(q) => {
+        const typed = q.trim();
+        if (!typed) return repoId ? "No branches" : "Type a branch name";
+        return repoId
+          ? `No branch matches “${typed}” — press Enter to use it as typed`
+          : `“${typed}” will be used as typed`;
+      }}
+    />
+  );
+}
+
+function prNoun(platform?: string | null): string {
+  if (platform === "gitlab") return "merge request";
+  return platform ? "pull request" : "PR / merge request";
 }

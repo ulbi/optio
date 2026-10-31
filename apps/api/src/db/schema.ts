@@ -1154,6 +1154,9 @@ export const modelProviders = pgTable(
 // provider's env vars. `allowedDomains` restricts who may sign in with it.
 
 export const authProviderConfigs = pgTable("auth_provider_configs", {
+  settings: jsonb("settings")
+    .$type<import("@optio/shared").AnySignInSettings | null>()
+    .default(null),
   provider: text("provider").primaryKey(),
   clientId: text("client_id").notNull(),
   encryptedClientSecret: bytea("encrypted_client_secret"),
@@ -1164,6 +1167,19 @@ export const authProviderConfigs = pgTable("auth_provider_configs", {
   enabled: boolean("enabled").notNull().default(true),
   updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── Deployment-wide settings (services/deployment-settings.ts) ──────────────
+//
+// What a deployment admin changes for the whole deployment in the app
+// (Settings → Access), one row per key; a key with no row follows the
+// environment's default (1793059201_deployment_settings.sql).
+
+export const deploymentSettings = pgTable("deployment_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").$type<unknown>().notNull(),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -2195,6 +2211,12 @@ export const localTerminals = pgTable(
     // The agent CLI's own session id (Claude Code hooks' `session_id`), so an
     // exited run can be resumed as an interactive chat (`claude --resume`).
     agentSessionId: text("agent_session_id"),
+    // Resume lineage (soft pointers): the session this one continues
+    // (`claude --resume` of its agent session) and the resume that continues
+    // this one. A resume keeps the original's spawn source, so its badge and
+    // icon carry over; lists show the latest of a chain in the original's place.
+    resumedFromTerminalId: uuid("resumed_from_terminal_id"),
+    resumedByTerminalId: uuid("resumed_by_terminal_id"),
     preview: text("preview"),
     // PR / ticket links the daemon extracted from the output, first-seen order.
     links: jsonb("links")
@@ -2353,4 +2375,22 @@ export const sessionToolApprovals = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("session_tool_approvals_session_idx").on(t.sessionId)],
+);
+
+export const userIdentities = pgTable(
+  "user_identities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    externalId: text("external_id").notNull(),
+    email: text("email"),
+    linkedAt: timestamp("linked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("user_identities_provider_external_key").on(table.provider, table.externalId),
+    index("user_identities_user_idx").on(table.userId),
+  ],
 );

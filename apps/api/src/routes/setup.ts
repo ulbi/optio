@@ -1,3 +1,6 @@
+import { parseRepoUrl as parsePlatformRepoUrl, resolveRepoPlatform } from "@optio/shared";
+import { getGitToken, isTrustedGitHost } from "../services/git-token-service.js";
+import { createGitPlatform } from "../services/git-platform/index.js";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -9,6 +12,7 @@ import { isGitHubAppConfigured, getInstallationToken } from "../services/github-
 import { isAuthDisabled } from "../services/oauth/index.js";
 import { ErrorResponseSchema } from "../schemas/common.js";
 import { guardedFetch } from "../utils/outbound-url.js";
+import { featureAllows } from "@optio/shared";
 import { requireDeploymentAdmin } from "../plugins/auth.js";
 
 const tokenSchema = z.object({ token: z.string().min(1) }).describe("Body with a required token");
@@ -42,6 +46,7 @@ const validateRepoSchema = z
   .object({
     repoUrl: z.string().min(1),
     token: z.string().optional(),
+    gitPlatform: z.enum(["github", "gitlab", "codecommit"]).optional(),
   })
   .describe("Body for validating access to a specific repo URL");
 
@@ -123,10 +128,11 @@ export async function setupRoutes(rawApp: FastifyInstance) {
       // set of stored secret names avoids that read-after-write asymmetry.
       const hasAnthropicKey = secretNames.includes("ANTHROPIC_API_KEY");
       const hasOpenAIKey = secretNames.includes("OPENAI_API_KEY");
+      // Without GitHub offered (OPTIO_GIT_PLATFORMS) only GITLAB_TOKEN counts.
       const hasGitToken =
-        secretNames.includes("GITHUB_TOKEN") ||
-        isGitHubAppConfigured() ||
-        secretNames.includes("GITLAB_TOKEN");
+        (featureAllows("gitPlatforms", "github") &&
+          (secretNames.includes("GITHUB_TOKEN") || isGitHubAppConfigured())) ||
+        (featureAllows("gitPlatforms", "gitlab") && secretNames.includes("GITLAB_TOKEN"));
 
       const usingSubscription = isSubscriptionAvailable();
       const hasOauthToken = secretNames.includes("CLAUDE_CODE_OAUTH_TOKEN");
@@ -254,7 +260,7 @@ export async function setupRoutes(rawApp: FastifyInstance) {
         // The host is typed by the person: vetted and pinned like any
         // outbound URL (utils/outbound-url.ts).
         const res = await guardedFetch(`https://${gitlabHost}/api/v4/user`, {
-          headers: { "PRIVATE-TOKEN": token, "User-Agent": "Optio" },
+          headers: { Authorization: `Bearer ${token}`, "User-Agent": "Optio" },
           redirect: "error",
         });
         if (!res.ok) {
@@ -627,7 +633,10 @@ export async function setupRoutes(rawApp: FastifyInstance) {
       try {
         const res = await guardedFetch(
           `https://${gitlabHost}/api/v4/projects?membership=true&order_by=last_activity_at&sort=desc&per_page=20`,
-          { headers: { "PRIVATE-TOKEN": token, "User-Agent": "Optio" }, redirect: "error" },
+          {
+            headers: { Authorization: `Bearer ${token}`, "User-Agent": "Optio" },
+            redirect: "error",
+          },
         );
         if (!res.ok) {
           return reply.send({ repos: [], error: `GitLab returned ${res.status}` });
@@ -679,13 +688,51 @@ export async function setupRoutes(rawApp: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const { repoUrl, token } = req.body;
+      const { repoUrl, token, gitPlatform } = req.body;
       if (!token) {
         await requireDeploymentAdmin(req, reply);
         if (reply.sent) return;
       }
 
       try {
+        const ri = parsePlatformRepoUrl(
+          repoUrl,
+          resolveRepoPlatform(repoUrl, gitPlatform) ?? undefined,
+        );
+        if (gitPlatform && ri && ri.platform !== "github") {
+          let platformToken = token ?? null;
+          if (!platformToken) {
+            if (!(await isTrustedGitHost(ri))) {
+              return reply.send({
+                valid: false,
+                error:
+                  "A deployment operator must list this host in GITHUB_HOSTS / GITLAB_HOSTS before using stored credentials.",
+              });
+            }
+            platformToken = await getGitToken(ri.platform, {
+              userId: req.user?.id,
+              workspaceId: req.user?.workspaceId ?? null,
+              host: ri.host,
+            }).catch(() => null);
+          }
+          if (!platformToken) {
+            return reply.send({ valid: false, error: `No ${ri.platform} token configured` });
+          }
+          try {
+            const meta = await createGitPlatform(ri.platform, platformToken).getRepoMetadata(ri);
+            return reply.send({ valid: true, repo: meta });
+          } catch (err) {
+            const status = (err as { status?: unknown }).status;
+            return reply.send({
+              valid: false,
+              error:
+                typeof status === "number"
+                  ? `Repository not accessible (${status})`
+                  : sanitizeError(err),
+            });
+          }
+        }
+
         const parsed = parseRepoUrl(repoUrl);
         if (!parsed || parsed.host !== "github.com") {
           return reply.send({ valid: false, error: "Could not parse GitHub repo from URL" });
